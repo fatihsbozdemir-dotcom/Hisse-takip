@@ -7,7 +7,7 @@ from datetime import datetime
 TELEGRAM_TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
 CHAT_ID = "8599240314"
 # Google Sheets ID'nizi buraya yapıştırın
-[  ] SHEET_ID = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/edit?usp=drivesdk"
+[  ] SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/edit?usp=drivesdk"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
 
 def mesaj_gonder(mesaj):
