@@ -19,6 +19,7 @@ def fotograf_gonder(foto_bayt, aciklama):
 
 def grafik_olustur(hisse, data):
     plt.figure(figsize=(10, 5))
+    # Verinin temiz olduğundan emin oluyoruz
     plt.plot(data.index, data.values, marker='o', linestyle='-', color='blue')
     plt.title(f"{hisse} - Son 5 Gunluk Hareket")
     plt.grid(True)
@@ -30,16 +31,25 @@ def grafik_olustur(hisse, data):
 
 def alarm_ve_grafik_sistemi():
     try:
+        # Google Sheets'ten verileri al
         df_sheet = pd.read_csv(SHEET_URL)
-        alarm_listesi = dict(zip(df_sheet['Hisse'], df_sheet['Hedef_Fiyat']))
+        # Sütun isimlerindeki olası boşlukları temizle
+        df_sheet.columns = df_sheet.columns.str.strip()
+        alarm_listesi = dict(zip(df_sheet['Hisse'], df_sheet['Hedef_Fiyat'].astype(float)))
         
         for hisse, hedef in alarm_listesi.items():
-            # Veriyi çek (Son 5 gün, saatlik)
-            df = yf.download(hisse, period="5d", interval="60m")['Close']
-            guncel_fiyat = df.iloc[-1]
+            # Veriyi çek (Son 5 gün)
+            ticker = yf.Ticker(hisse)
+            hist = ticker.history(period="5d", interval="60m")['Close']
+            
+            if hist.empty:
+                continue
+
+            # Güncel fiyatı alırken hata oluşmaması için .iloc[-1] ve float zorlaması
+            guncel_fiyat = float(hist.iloc[-1])
             
             # Grafiği çiz
-            foto = grafik_olustur(hisse, df)
+            foto = grafik_olustur(hisse, hist)
             
             # Mesajı hazırla
             durum = "✅ HEDEF GECILDI! 🎯" if guncel_fiyat >= hedef else "⏳ Hedef Bekleniyor"
@@ -49,8 +59,9 @@ def alarm_ve_grafik_sistemi():
             fotograf_gonder(foto, mesaj)
             
     except Exception as e:
+        error_msg = f"⚠️ Hata Detayi: {str(e)}"
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={"chat_id": CHAT_ID, "text": f"⚠️ Hata: {str(e)}"})
+                      json={"chat_id": CHAT_ID, "text": error_msg})
 
 if __name__ == "__main__":
     alarm_ve_grafik_sistemi()
