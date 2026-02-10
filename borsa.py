@@ -6,9 +6,9 @@ from datetime import datetime
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
 CHAT_ID = "8599240314"
-# Google Sheets ID'nizi buraya yapıştırın
-[  ] SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/edit?usp=drivesdk"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv"
+# Sadece ID kısmını bıraktık:
+SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 def mesaj_gonder(mesaj):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -16,9 +16,8 @@ def mesaj_gonder(mesaj):
     requests.post(url, json=payload)
 
 def sheet_verilerini_al():
-    # Google Sheets'i CSV olarak oku
+    # Google Sheets'i direkt CSV olarak çeker
     df_sheet = pd.read_csv(SHEET_URL)
-    # Hisse: Hedef_Fiyat şeklinde bir sözlüğe çevir
     return dict(zip(df_sheet['Hisse'], df_sheet['Hedef_Fiyat']))
 
 def alarm_sistemi():
@@ -31,7 +30,11 @@ def alarm_sistemi():
         
         rapor = f"📱 Google Sheets Raporu ({datetime.now().strftime('%H:%M')})\n\n"
         
-        for hisse, guncel_fiyat in data.items():
+        # Eğer tek bir hisse varsa 'data' seri döner, birden fazlaysa dataframe döner. 
+        # Bu yüzden veriyi sözlüğe çevirip garantiye alıyoruz:
+        guncel_fiyatlar = data.to_dict() if len(hisseler) > 1 else {hisseler[0]: data}
+
+        for hisse, guncel_fiyat in guncel_fiyatlar.items():
             hedef = alarm_listesi[hisse]
             if guncel_fiyat >= hedef:
                 rapor += f"✅ {hisse}: {guncel_fiyat:.2f} TL (HEDEF GEÇİLDİ! 🎯)\n"
