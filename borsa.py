@@ -11,7 +11,7 @@ ALARM_LISTESI = {
     "CANTE.IS": 2.0, # Örnek hedef fiyatlar
     "TRILC.IS": 65.00,
     "BINHO.IS": 50.00,
-    "CWENE.IS"
+    "CWENE.IS":
 }
 
 def mesaj_gonder(mesaj):
