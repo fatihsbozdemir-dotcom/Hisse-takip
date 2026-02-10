@@ -8,9 +8,10 @@ CHAT_ID = "8599240314"
 
 # Takip listesi ve Alarm fiyatları (Hisse: Hedef Fiyat)
 ALARM_LISTESI = {
-    "THYAO.IS": 280.50, # Örnek hedef fiyatlar
+    "CANTE.IS": 2.0, # Örnek hedef fiyatlar
     "TRILC.IS": 65.00,
-    "BINHO.IS": 50.00
+    "BINHO.IS": 50.00,
+    "CWENE.IS"
 }
 
 def mesaj_gonder(mesaj):
@@ -31,7 +32,7 @@ def alarm_kontrol():
         
         # Eğer güncel fiyat hedef fiyatı geçtiyse veya çok yaklaştıysa (%0.5 tolerans)
         if guncel_fiyat >= hedef_fiyat:
-            rapor_mesaji += f"🚨 ALARM: {hisse} HEDEFİ GEÇTİ!\n💰 Fiyat: {guncel_fiyat:.2f} TL\n🎯 Hedef: {hedef_fiyat:.2f} TL\n\n"
+            rapor_mesaji += f"🚨💥 ALARM: {hisse} HEDEFİ GEÇTİ!\n💰 Fiyat: {guncel_fiyat:.2f} TL\n🎯 Hedef: {hedef_fiyat:.2f} TL\n\n"
             alarm_caldi_mi = True
         else:
             rapor_mesaji += f"🔹 {hisse}: {guncel_fiyat:.2f} TL (Hedef: {hedef_fiyat})\n"
