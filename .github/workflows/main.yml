@@ -18,8 +18,9 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Kutuphaneleri kur
-        run: pip install yfinance pandas requests matplotlib
+      - name: Kutuphaneleri kur 
+        run: pip install yfinance pandas requests mplfinance
+
 
       - name: Botu calistir
         run: python borsa.py
