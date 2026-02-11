@@ -42,7 +42,7 @@ def alarm_ve_grafik_sistemi():
         for hisse, hedef in alarm_listesi.items():
             # Mum grafiği için tam veri çekiyoruz
             ticker = yf.Ticker(hisse)
-            hist = ticker.history(period="5d", interval="60m")
+            hist = ticker.history(period="6mo", interval="1d")
             
             if hist.empty: continue
 
