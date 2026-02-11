@@ -3,7 +3,7 @@ name: Hisse Fiyat Botu
 on:
   schedule:
     # Türkiye saatiyle 11:00, 13:00 ve 18:00 (UTC 08:00, 10:00, 15:00)
-    - cron: '0 7,10,15 * * 1-5'
+    - cron: '0 8,10,15 * * 1-5'
   workflow_dispatch: # İstediğiniz an elle çalıştırmak için
 
 jobs:
