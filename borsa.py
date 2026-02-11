@@ -20,28 +20,30 @@ def rsi_hesapla(series, period=14):
 def fotograf_gonder(foto_bayt, aciklama):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     files = {'photo': ('graph.png', foto_bayt, 'image/png')}
-    data = {'chat_id': CHAT_ID, 'caption': aciklama}
+    data = {'chat_id': CHAT_ID, 'caption': aciklama, 'parse_mode': 'Markdown'}
     return requests.post(url, files=files, data=data)
 
-def grafik_ve_rsi_olustur(hisse, df):
+def grafik_analiz_olustur(hisse, df):
     # RSI Hesapla
     df['RSI'] = rsi_hesapla(df['Close'])
     
-    # Mum Grafiği Stili (TradingView Tarzı)
+    # Stil Ayarları (TradingView Tarzı)
     mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
     s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
     
     # RSI Çizgisini Alt Panele Ekle
     add_plot = [
-        mpf.make_addplot(df['RSI'], panel=1, color='purple', ylabel='RSI', ylim=(0, 100))
+        mpf.make_addplot(df['RSI'], panel=2, color='purple', ylabel='RSI', ylim=(0, 100))
     ]
     
     buf = io.BytesIO()
-    # Grafik Çizimi
+    # Grafik Çizimi: Mumlar, Hacim (Volume), 20 ve 50 günlük Hareketli Ortalamalar (mav)
     mpf.plot(df, type='candle', style=s, addplot=add_plot,
-             title=f"\n{hisse} - 4 Saatlik Mumlar",
+             volume=True, # Hacim ekle
+             mav=(20, 50), # 20 ve 50 periyotluk hareketli ortalamalar
+             title=f"\n{hisse} - Mum, Hacim, MA & RSI",
              ylabel='Fiyat (TL)',
-             panel_ratios=(2, 1),
+             panel_ratios=(3, 1, 1), # Panellerin boyut oranları (Grafik, Hacim, RSI)
              savefig=dict(fname=buf, format='png', bbox_inches='tight'))
     buf.seek(0)
     
@@ -50,34 +52,34 @@ def grafik_ve_rsi_olustur(hisse, df):
 
 def alarm_ve_grafik_sistemi():
     try:
-        # Sheet Verisini Çek
         df_sheet = pd.read_csv(SHEET_URL)
         df_sheet.columns = df_sheet.columns.str.strip()
         alarm_listesi = dict(zip(df_sheet['Hisse'], df_sheet['Hedef_Fiyat'].astype(float)))
         
         for hisse, hedef in alarm_listesi.items():
             ticker = yf.Ticker(hisse)
-            # 4 Saatlik ve 1 Aylık veri (Daha stabil RSI için)
-            hist = ticker.history(period="1mo", interval="4h")
+            # Daha sağlıklı ortalamalar için veri setini biraz genişlettik
+            hist = ticker.history(period="3mo", interval="1d") 
             
-            if hist.empty or len(hist) < 15:
+            if hist.empty or len(hist) < 50:
                 continue
 
             guncel_fiyat = float(hist['Close'].iloc[-1])
-            foto, son_rsi = grafik_ve_rsi_olustur(hisse, hist)
+            foto, son_rsi = grafik_analiz_olustur(hisse, hist)
             
-            # RSI Durumu
-            rsi_durum = "🔵 Normal"
-            if son_rsi >= 70: rsi_durum = "🔴 Pahali (Asiri Alim)"
-            elif son_rsi <= 30: rsi_durum = "🟢 Ucuz (Asiri Satim)"
+            # RSI Yorumlama
+            rsi_notu = "🔵 Normal"
+            if son_rsi >= 70: rsi_notu = "🔴 *Asiri Alim (Pahali)*"
+            elif son_rsi <= 30: rsi_notu = "🟢 *Asiri Satim (Ucuz)*"
             
-            durum_emoji = "✅ HEDEF GECILDI!" if guncel_fiyat >= hedef else "⏳ Hedef Bekleniyor"
+            durum = "✅ HEDEF GECILDI! 🎯" if guncel_fiyat >= hedef else "⏳ Hedef Bekleniyor"
             
             mesaj = (f"📊 *{hisse}*\n"
-                     f"💰 Fiyat: {guncel_fiyat:.2f} TL\n"
+                     f"💰 Güncel: {guncel_fiyat:.2f} TL\n"
                      f"🎯 Hedef: {hedef:.2f} TL\n"
-                     f"📈 RSI: {son_rsi:.2f} {rsi_durum}\n"
-                     f"📝 {durum_emoji}")
+                     f"📈 RSI: {son_rsi:.2f} ({rsi_notu})\n"
+                     f"📉 MA20/50 ve Hacim grafikte eklidir.\n"
+                     f"📝 Durum: {durum}")
             
             fotograf_gonder(foto, mesaj)
             
