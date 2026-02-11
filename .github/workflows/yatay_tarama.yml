@@ -1,0 +1,22 @@
+name: Yatay Hisse Tarayıcı
+
+on:
+  schedule:
+    # Günde bir kez, akşam kapanışından önce 17:45'te çalışsın
+    - cron: '45 14 * * 1-5'
+  workflow_dispatch: 
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodlari cek
+        uses: actions/checkout@v3
+      - name: Python ayarla
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Kutuphaneleri kur
+        run: pip install yfinance pandas requests mplfinance
+      - name: Yataylari bul
+        run: python yatay_avcisi.py
