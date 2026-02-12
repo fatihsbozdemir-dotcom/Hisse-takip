@@ -26,7 +26,7 @@ def analiz_et():
             
             if len(hist) < 20: continue
 
-            # WMA ve Hacim Hesaplama
+            # Hacim ve WMA Hesaplama
             hist['WMA9'] = ta.wma(hist['Close'], length=9)
             hist['WMA15'] = ta.wma(hist['Close'], length=15)
             guncel_hacim = hist['Volume'].iloc[-1]
@@ -46,7 +46,7 @@ def analiz_et():
                 msg = f"📊 *{hisse}* - {durum}\n🔵 WMA9 | 🟠 WMA15\n💰 Fiyat: {hist['Close'].iloc[-1]:.2f}"
                 requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", files={'photo': buf}, data={'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'})
 
-        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': f'✅ Tarama bitti: {bulunan} sinyal.'})
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': f'✅ Tarama bitti. {bulunan} hisse paylaşıldı.'})
     except Exception as e:
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': f'❌ Hata: {str(e)}'})
 
