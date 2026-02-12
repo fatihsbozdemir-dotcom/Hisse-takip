@@ -6,7 +6,7 @@ import io
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
-CHAT_ID = "-1003838602845" # YENİ GRUP ID: ELİ BÖGRÜNDE
+CHAT_ID = "-1003838602845" # ELİ BÖGRÜNDE GRUBU
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
@@ -18,82 +18,105 @@ def rsi_hesapla(series, period=14):
     return 100 - (100 / (1 + rs))
 
 def yatay_kontrol(df):
-    # Bollinger Bantları Hesapla (20 Periyot)
+    """Günlük periyotta Bollinger Bantları ile daralma (Squeeze) kontrolü"""
     ma20 = df['Close'].rolling(window=20).mean()
     std20 = df['Close'].rolling(window=20).std()
     ust_bant = ma20 + (2 * std20)
     alt_bant = ma20 - (2 * std20)
     
-    # Bant Genişliği (Bandwidth)
     bant_genisligi = (ust_bant - alt_bant) / ma20
-    
-    # Eğer son 5 günün bant genişliği son 100 günün en düşük seviyelerindeyse: YATAY
     su_anki_genislik = bant_genisligi.iloc[-1]
-    tarihsel_min = bant_genisligi.rolling(window=100).min().iloc[-1]
     
-    # Eşik değer: Mevcut genişlik, minimuma çok yakınsa (sıkışma var)
-    is_squeeze = su_anki_genislik <= (tarihsel_min * 1.2)
-    return is_squeeze, su_anki_genislik
+    # Eşik: Son 100 günün en dar %15'lik zamanındaysak sıkışma var demektir
+    esik_deger = bant_genisligi.rolling(window=100).quantile(0.15).iloc[-1]
+    return su_anki_genislik <= esik_deger
 
 def fotograf_gonder(foto_bayt, aciklama):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-    files = {'photo': ('graph.png', foto_bayt, 'image/png')}
+    files = {'photo': ('analiz.png', foto_bayt, 'image/png')}
     data = {'chat_id': CHAT_ID, 'caption': aciklama, 'parse_mode': 'Markdown'}
     requests.post(url, files=files, data=data)
 
-def analiz_et():
+def analiz_et_ve_gruba_at():
     try:
+        # 1. Google Sheets'ten verileri çek
         df_sheet = pd.read_csv(SHEET_URL)
         df_sheet.columns = df_sheet.columns.str.strip()
         
+        bildirilecek_hisseler = []
+
+        # 2. İNCELEME (Sessizce tarama yapar)
         for index, row in df_sheet.iterrows():
             hisse = row['Hisse']
-            hedef = float(row['Hedef_Fiyat'])
-            ticker = yf.Ticker(hisse)
-            hist = ticker.history(period="6mo", interval="1d")
+            # Hedef_Fiyat sütunu boşsa 0 al
+            try:
+                hedef = float(row['Hedef_Fiyat']) if pd.notnull(row['Hedef_Fiyat']) else 0
+            except:
+                hedef = 0
             
-            if hist.empty or len(hist) < 100: continue
+            ticker_name = hisse if hisse.endswith(".IS") else f"{hisse}.IS"
+            ticker = yf.Ticker(ticker_name)
+            hist = ticker.history(period="6mo", interval="1d") # GÜNLÜK PERİYOT
+            
+            if hist.empty or len(hist) < 30: continue
 
             guncel_fiyat = float(hist['Close'].iloc[-1])
-            hist['RSI'] = rsi_hesapla(hist['Close'])
-            son_rsi = hist['RSI'].iloc[-1]
+            is_squeeze = yatay_kontrol(hist)
             
-            # --- YATAY SEYİR VE SİNYAL KONTROLLERİ ---
-            sinyaller = []
-            is_squeeze, genislik = yatay_kontrol(hist)
-            
-            if is_squeeze:
-                sinyaller.append("🟨 *YATAY SEYİR (Sıkışma Var!)*")
-            
-            # Diğer sinyaller
-            if hist['Volume'].iloc[-1] > (hist['Volume'].rolling(window=20).mean().iloc[-1] * 1.8):
-                sinyaller.append("🚀 *HACİM PATLAMASI!*")
-            if son_rsi < 35:
-                sinyaller.append("💎 *AŞIRI UCUZ*")
+            # --- FİLTRE MANTIĞI ---
+            kriter_uygun = False
+            tip = ""
+            not_mesaji = ""
 
-            # Mesaj
-            hedef_durum = "✅ *HEDEF GEÇİLDİ!*" if guncel_fiyat >= hedef else "⏳ Bekliyor"
-            sinyal_notu = "\n".join(sinyaller) if sinyaller else "🔍 Normal seyir."
+            if hedef > 0:
+                # Hedef fiyat yazılmışsa direkt listeye al
+                kriter_uygun = True
+                tip = "🎯 HEDEF TAKİBİ"
+                not_mesaji = "✅ Hedefe ulaşıldı!" if guncel_fiyat >= hedef else "⏳ Hedef bekleniyor."
+            elif is_squeeze:
+                # Hedef yok ama yatayda sıkışma varsa listeye al
+                kriter_uygun = True
+                tip = "🟨 YATAY SIKIŞMA"
+                not_mesaji = "⚠️ Bollinger bantları daraldı, patlama yakın olabilir."
 
-            mesaj = (f"📊 *{hisse} ANALİZ*\n\n"
-                     f"💰 Fiyat: {guncel_fiyat:.2f} TL\n"
-                     f"🎯 Hedef: {hedef:.2f} TL\n"
-                     f"📈 RSI: {son_rsi:.2f}\n"
-                     f"📡 *Durum:*\n{sinyal_notu}\n"
-                     f"📝 {hedef_durum}")
+            if kriter_uygun:
+                bildirilecek_hisseler.append({
+                    'hisse': hisse, 'fiyat': guncel_fiyat, 'hedef': hedef, 
+                    'tip': tip, 'not': not_mesaji, 'data': hist
+                })
+
+        # 3. BİLDİRME (Sadece uygun olanları gruba atar)
+        if not bildirilecek_hisseler:
+            print("Grupta paylaşılacak kritik bir durum (hedef veya sıkışma) bulunamadı.")
+            return
+
+        for item in bildirilecek_hisseler:
+            hist_data = item['data']
             
-            # Grafik Çizimi (Son 60 gün)
+            # Grafik hazırlığı
             mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
             s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
             buf = io.BytesIO()
-            mpf.plot(hist.tail(60), type='candle', style=s, volume=True, 
-                     title=f"\n{hisse}", ylabel='Fiyat (TL)',
+            mpf.plot(hist_data.tail(50), type='candle', style=s, volume=True,
+                     title=f"\n{item['hisse']} - Gunluk Analiz",
                      savefig=dict(fname=buf, format='png', bbox_inches='tight'))
             buf.seek(0)
+
+            # Telegram mesajı
+            mesaj = (f"📢 *{item['tip']}*\n\n"
+                     f"📊 *Hisse:* {item['hisse']}\n"
+                     f"💰 *Güncel Fiyat:* {item['fiyat']:.2f} TL\n")
+            
+            if item['hedef'] > 0:
+                mesaj += f"🎯 *Hedef Fiyat:* {item['hedef']:.2f} TL\n"
+            
+            mesaj += f"📝 *Durum:* {item['not']}\n\n"
+            mesaj += "📅 _Son 50 günlük periyot grafiği yukarıdadır._"
+
             fotograf_gonder(buf, mesaj)
-                
+            
     except Exception as e:
         print(f"Hata: {e}")
 
 if __name__ == "__main__":
-    analiz_et()
+    analiz_et_ve_gruba_at()
