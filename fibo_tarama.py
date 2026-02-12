@@ -1,6 +1,13 @@
-import yfinance as yf
-import pandas as pd
-import requests
+import time # En üste ekle
+
+# ... (diğer kodlar aynı)
+
+        for hisse in hisseler:
+            t_name = f"{str(hisse).strip()}.IS"
+            time.sleep(1.5) # Her hisse arasında 1.5 saniye bekle
+            df = yf.Ticker(t_name).history(period="3y")
+# ...
+
 
 # --- AYARLAR ---
 TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
