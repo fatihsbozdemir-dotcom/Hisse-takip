@@ -1,0 +1,19 @@
+name: Manuel Hacim Analizi (WMA)
+
+on:
+  workflow_dispatch: # Sadece butonla çalışır
+
+jobs:
+  run-analiz:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu Cek
+        uses: actions/checkout@v3
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Kütüphaneler
+        run: pip install yfinance pandas requests mplfinance pandas_ta
+      - name: Calistir
+        run: python hacim_analiz.py
