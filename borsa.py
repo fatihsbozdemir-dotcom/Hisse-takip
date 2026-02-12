@@ -19,8 +19,8 @@ def rsi_hesapla(series, period=14):
 
 def yatay_kontrol(df):
     """Bollinger Bantları ile sıkışma kontrolü (Hassasiyet %30'a çıkarıldı)"""
-    ma20 = df['Close'].rolling(window=20).mean()
-    std20 = df['Close'].rolling(window=20).std()
+    ma20 = df['Close'].rolling(window=10).mean()
+    std20 = df['Close'].rolling(window=10).std()
     ust_bant = ma20 + (2 * std20)
     alt_bant = ma20 - (2 * std20)
     
@@ -28,7 +28,7 @@ def yatay_kontrol(df):
     su_anki_genislik = bant_genisligi.iloc[-1]
     
     # %30 hassasiyet ile daha kolay yakalar
-    esik_deger = bant_genisligi.rolling(window=100).quantile(0.30).iloc[-1]
+    esik_deger = bant_genisligi.rolling(window=50).quantile(0.30).iloc[-1]
     return su_anki_genislik <= esik_deger
 
 def fotograf_gonder(foto_bayt, aciklama):
