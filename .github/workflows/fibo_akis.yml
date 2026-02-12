@@ -1,0 +1,20 @@
+name: Fibonacci Ortalamalar Tarama
+on:
+  workflow_dispatch: # Manuel çalıştırma butonu
+  schedule:
+    - cron: '0 19 * * 1-5' # Her akşam 22:00 TSİ
+
+jobs:
+  run-fibo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu Cek
+        uses: actions/checkout@v3
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Paketleri Kur
+        run: pip install yfinance pandas requests
+      - name: Calistir
+        run: python fibo_tarama.py
