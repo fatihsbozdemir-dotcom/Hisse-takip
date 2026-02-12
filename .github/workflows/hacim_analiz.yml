@@ -1,7 +1,7 @@
 name: Manuel Hacim Analizi (WMA)
 
 on:
-  workflow_dispatch: # Manuel buton ekler
+  workflow_dispatch: # Mavi butonu aktif eder
 
 jobs:
   run-analiz:
@@ -13,7 +13,7 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-      - name: Kutuphaneleri Kur
+      - name: Kütüphaneleri Kur
         run: pip install yfinance pandas requests mplfinance pandas_ta
       - name: Calistir
         run: python hacim_analiz.py
