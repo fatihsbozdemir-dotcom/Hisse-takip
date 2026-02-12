@@ -13,15 +13,17 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO
 def analiz():
     try:
         df_sheet = pd.read_csv(SHEET_URL)
+        df_sheet.columns = [c.strip() for c in df_sheet.columns]
         bulunan = 0
+        
         for hisse in df_sheet.iloc[:, 0].dropna():
             t_name = f"{str(hisse).strip()}.IS"
             hist = yf.Ticker(t_name).history(period="3mo")
             if len(hist) < 20: continue
             
-            # WMA Hesaplama
-            hist['WMA9'] = ta.wma(hist['Close'], length=9)
-            hist['WMA15'] = ta.wma(hist['Close'], length=15)
+            # WMA ve Hacim Analizi
+            hist.ta.wma(length=9, append=True)
+            hist.ta.wma(length=15, append=True)
             
             cur_vol = hist['Volume'].iloc[-1]
             max_vol = hist['Volume'].tail(10).max()
