@@ -3,21 +3,40 @@ import pandas as pd
 import requests
 import mplfinance as mpf
 import io
-import pandas_ta as ta # Burası aynı kalsın
+import pandas_ta as ta
 
 # --- AYARLAR ---
-TELEGRAM_TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
+TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
 CHAT_ID = "-1003838602845"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/export?format=csv"
 
-def test_mesaji():
+def analiz():
     try:
-        msg = "🚀 *Bot Bağlantı Testi:* GitHub dosyayı buldu ve Python çalıştı! Şimdi hisse analizine geçiyorum..."
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        res = requests.post(url, json={'chat_id': CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'})
-        print(f"Telegram Yanıtı: {res.text}")
+        df_sheet = pd.read_csv(SHEET_URL)
+        bulunan = 0
+        for hisse in df_sheet.iloc[:, 0].dropna():
+            t_name = f"{str(hisse).strip()}.IS"
+            hist = yf.Ticker(t_name).history(period="3mo")
+            if len(hist) < 20: continue
+            
+            # WMA Hesaplama
+            hist['WMA9'] = ta.wma(hist['Close'], length=9)
+            hist['WMA15'] = ta.wma(hist['Close'], length=15)
+            
+            cur_vol = hist['Volume'].iloc[-1]
+            max_vol = hist['Volume'].tail(10).max()
+            
+            if cur_vol == max_vol:
+                bulunan += 1
+                buf = io.BytesIO()
+                mpf.plot(hist.tail(40), type='candle', volume=True, savefig=dict(fname=buf, format='png'))
+                buf.seek(0)
+                msg = f"📊 *{hisse}* - 🔥 YÜKSEK HACİM\n💰 Fiyat: {hist['Close'].iloc[-1]:.2f}"
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", files={'photo': buf}, data={'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'})
+
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': f"✅ Tarama bitti. {bulunan} sinyal paylaşıldı."})
     except Exception as e:
-        print(f"Hata: {e}")
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': f"❌ Hata: {str(e)}"})
 
 if __name__ == "__main__":
-    test_mesaji()
-    # Eğer buraya kadar çalışırsa, bir sonraki adımda tam kodu buraya ekleyeceğiz.
+    analiz()
