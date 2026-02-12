@@ -50,7 +50,7 @@ def analiz_et():
             hisse = row['Hisse']
             hedef = float(row['Hedef_Fiyat'])
             ticker = yf.Ticker(hisse)
-            hist = ticker.history(period="1y", interval="1d")
+            hist = ticker.history(period="6mo", interval="1d")
             
             if hist.empty or len(hist) < 100: continue
 
