@@ -17,27 +17,29 @@ def rsi_hesapla(series, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
+def yatay_kontrol(df):
+    # Bollinger Bantları Hesapla (20 Periyot)
+    ma20 = df['Close'].rolling(window=20).mean()
+    std20 = df['Close'].rolling(window=20).std()
+    ust_bant = ma20 + (2 * std20)
+    alt_bant = ma20 - (2 * std20)
+    
+    # Bant Genişliği (Bandwidth)
+    bant_genisligi = (ust_bant - alt_bant) / ma20
+    
+    # Eğer son 5 günün bant genişliği son 100 günün en düşük seviyelerindeyse: YATAY
+    su_anki_genislik = bant_genisligi.iloc[-1]
+    tarihsel_min = bant_genisligi.rolling(window=100).min().iloc[-1]
+    
+    # Eşik değer: Mevcut genişlik, minimuma çok yakınsa (sıkışma var)
+    is_squeeze = su_anki_genislik <= (tarihsel_min * 1.2)
+    return is_squeeze, su_anki_genislik
+
 def fotograf_gonder(foto_bayt, aciklama):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     files = {'photo': ('graph.png', foto_bayt, 'image/png')}
     data = {'chat_id': CHAT_ID, 'caption': aciklama, 'parse_mode': 'Markdown'}
     requests.post(url, files=files, data=data)
-
-def grafik_ciz(hisse, df, rsi_deger, mesaj_tipi):
-    mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
-    s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
-    
-    # RSI Paneli
-    add_plot = [mpf.make_addplot(df['RSI'], panel=2, color='purple', ylabel='RSI', ylim=(0, 100))]
-    
-    buf = io.BytesIO()
-    # Grafik: Mumlar, Hacim, MA20, MA50
-    mpf.plot(df, type='candle', style=s, addplot=add_plot, volume=True, mav=(20, 50),
-             title=f"\n{hisse} - {mesaj_tipi}",
-             ylabel='Fiyat (TL)', panel_ratios=(3,1,1),
-             savefig=dict(fname=buf, format='png', bbox_inches='tight'))
-    buf.seek(0)
-    return buf
 
 def analiz_et():
     try:
@@ -47,54 +49,51 @@ def analiz_et():
         for index, row in df_sheet.iterrows():
             hisse = row['Hisse']
             hedef = float(row['Hedef_Fiyat'])
-            
             ticker = yf.Ticker(hisse)
-            # Hem ortalamalar hem de sinyal için 1 yıllık veri alıyoruz
             hist = ticker.history(period="1y", interval="1d")
             
-            if hist.empty or len(hist) < 50: continue
+            if hist.empty or len(hist) < 100: continue
 
             guncel_fiyat = float(hist['Close'].iloc[-1])
             hist['RSI'] = rsi_hesapla(hist['Close'])
             son_rsi = hist['RSI'].iloc[-1]
             
-            # --- 1. SİNYAL AVCI KONTROLLERİ ---
+            # --- YATAY SEYİR VE SİNYAL KONTROLLERİ ---
             sinyaller = []
-            # Golden Cross (50 günlük 200 günlüğü keserse - veri 1 yıllık olduğu için MA200 bakabiliriz)
-            ma50 = hist['Close'].rolling(window=50).mean()
-            ma200 = hist['Close'].rolling(window=200).mean()
-            if ma50.iloc[-1] > ma200.iloc[-1] and ma50.iloc[-2] <= ma200.iloc[-2]:
-                sinyaller.append("🌟 *ALTIN KESİŞME!*")
+            is_squeeze, genislik = yatay_kontrol(hist)
             
-            # Hacim Patlaması
-            if hist['Volume'].iloc[-1] > (hist['Volume'].rolling(window=20).mean().iloc[-1] * 1.5):
+            if is_squeeze:
+                sinyaller.append("🟨 *YATAY SEYİR (Sıkışma Var!)*")
+            
+            # Diğer sinyaller
+            if hist['Volume'].iloc[-1] > (hist['Volume'].rolling(window=20).mean().iloc[-1] * 1.8):
                 sinyaller.append("🚀 *HACİM PATLAMASI!*")
-            
-            # RSI Ucuzluk
             if son_rsi < 35:
-                sinyaller.append("💎 *AŞIRI UCUZ (RSI 35 Altı)*")
+                sinyaller.append("💎 *AŞIRI UCUZ*")
 
-            # --- 2. HEDEF FİYAT ALARMI ---
-            hedef_durum = "✅ *HEDEF GEÇİLDİ!* 🎯" if guncel_fiyat >= hedef else "⏳ Hedef Bekleniyor"
-            
-            # Mesaj İçeriği Hazırlama
-            sinyal_notu = "\n".join(sinyaller) if sinyaller else "🔍 Özel bir sinyal yok."
-            rsi_durum = "🔴 Pahalı" if son_rsi > 70 else ("🟢 Ucuz" if son_rsi < 30 else "🔵 Normal")
+            # Mesaj
+            hedef_durum = "✅ *HEDEF GEÇİLDİ!*" if guncel_fiyat >= hedef else "⏳ Bekliyor"
+            sinyal_notu = "\n".join(sinyaller) if sinyaller else "🔍 Normal seyir."
 
-            mesaj = (f"📊 *{hisse} ANALİZ RAPORU*\n\n"
-                     f"💰 *Fiyat:* {guncel_fiyat:.2f} TL\n"
-                     f"🎯 *Hedefin:* {hedef:.2f} TL\n"
-                     f"📝 *Alarm:* {hedef_durum}\n\n"
-                     f"📈 *RSI:* {son_rsi:.2f} ({rsi_durum})\n"
-                     f"📡 *Teknik Sinyaller:*\n{sinyal_notu}")
+            mesaj = (f"📊 *{hisse} ANALİZ*\n\n"
+                     f"💰 Fiyat: {guncel_fiyat:.2f} TL\n"
+                     f"🎯 Hedef: {hedef:.2f} TL\n"
+                     f"📈 RSI: {son_rsi:.2f}\n"
+                     f"📡 *Durum:*\n{sinyal_notu}\n"
+                     f"📝 {hedef_durum}")
             
-            # Grafik türüne göre başlık belirle ve gönder
-            tip = "Sinyal Yakalandı!" if sinyaller else "Düzenli Takip"
-            foto = grafik_ciz(hisse, hist.suffix(30), son_rsi, tip) # Son 30 günü göster ki grafik net olsun
-            fotograf_gonder(foto, mesaj)
+            # Grafik Çizimi (Son 60 gün)
+            mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
+            s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
+            buf = io.BytesIO()
+            mpf.plot(hist.tail(60), type='candle', style=s, volume=True, 
+                     title=f"\n{hisse}", ylabel='Fiyat (TL)',
+                     savefig=dict(fname=buf, format='png', bbox_inches='tight'))
+            buf.seek(0)
+            fotograf_gonder(buf, mesaj)
                 
     except Exception as e:
-        print(f"Hata oluştu: {e}")
+        print(f"Hata: {e}")
 
 if __name__ == "__main__":
     analiz_et()
