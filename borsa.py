@@ -6,7 +6,39 @@ import io
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
-CHAT_ID = "8599240314"
+CHAT_ID = "import yfinance as ticker_data
+import pandas as pd
+import requests
+import time
+
+# --- AYARLAR ---
+TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
+CHAT_ID = "-1003838602845"  # Yeni grup ID'si (ELİ BÖGRÜNDE)
+
+# Takip edilecek ana hisse listesi
+HISSES = [
+    "THYAO.IS", "EREGL.IS", "ASELS.IS", "SISE.IS", "KCHOL.IS", 
+    "SASA.IS", "BIMAS.IS", "TUPRS.IS", "AKBNK.IS", "GARAN.IS"
+]
+
+def send_telegram_msg(message):
+    """Telegram grubuna mesaj gönderir"""
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    try:
+        requests.post(url, json=payload)
+    except Exception as e:
+        print(f"Mesaj hatası: {e}")
+
+def check_squeeze(df):
+    """Bollinger Bantları ve Keltner Kanalları ile yatay sıkışma (Squeeze) kontrolü"""
+    # 20 periyotlu hareketli ortalama
+    ma20 = df['Close'].rolling(window=20).mean()
+    std_dev = df['Close'].rolling(window=20).std()
+    
+    # Bollinger Bantları
+    upper_bb = ma20 + (2 * std_dev)
+"
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
