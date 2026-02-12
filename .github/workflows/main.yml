@@ -2,13 +2,10 @@ name: Borsa Takip Otomasyonu
 
 on:
   schedule:
-    # Türkiye Saati 10:30 (UTC 07:30)
-    - cron: '30 7 * * *'
-    # Türkiye Saati 13:30 (UTC 10:30)
-    - cron: '30 10 * * *'
-    # Türkiye Saati 18:30 (UTC 15:30)
-    - cron: '30 15 * * *'
-  workflow_dispatch: # El ile başlatma butonu
+    - cron: '30 7 * * *'   # 10:30 TSİ
+    - cron: '30 10 * * *'  # 13:30 TSİ
+    - cron: '30 15 * * *'  # 18:30 TSİ
+  workflow_dispatch:
 
 jobs:
   run-bot:
@@ -23,8 +20,7 @@ jobs:
           python-version: '3.9'
 
       - name: Kutuphaneleri Yukle
-        run: |
-          pip install yfinance pandas requests mplfinance
+        run: pip install yfinance pandas requests mplfinance
 
       - name: Botu Calistir
-        run: python borsa_botu.py
+        run: python bot.py
