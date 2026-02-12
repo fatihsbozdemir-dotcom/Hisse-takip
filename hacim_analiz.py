@@ -1,5 +1,9 @@
+import yfinance as yf
+import pandas as pd
 import requests
-import sys
+import mplfinance as mpf
+import io
+import pandas_ta as ta # Burası aynı kalsın
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
