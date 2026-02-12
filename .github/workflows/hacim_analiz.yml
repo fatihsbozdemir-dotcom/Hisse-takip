@@ -14,4 +14,4 @@ jobs:
       - name: Kütüphaneleri Kur
         run: pip install yfinance pandas requests mplfinance pandas_ta
       - name: Calistir
-        run: python hacim_analiz.py
+        run: pip install yfinance pandas requests mplfinance pandas_ta
