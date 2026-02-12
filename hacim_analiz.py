@@ -26,9 +26,10 @@ def analiz_et():
             
             if len(hist) < 20: continue
 
-            # Hacim ve WMA Hesaplama
+            # WMA Hesaplama
             hist['WMA9'] = ta.wma(hist['Close'], length=9)
             hist['WMA15'] = ta.wma(hist['Close'], length=15)
+            
             guncel_hacim = hist['Volume'].iloc[-1]
             son_10_hacim = hist['Volume'].tail(10)
 
