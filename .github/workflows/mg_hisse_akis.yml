@@ -15,11 +15,13 @@ jobs:
       - name: Python Kur
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11' # Hata almamak için 3.11 idealdir
 
       - name: Kütüphaneleri Yükle
         run: |
-          pip install pandas requests pandas-ta
+          python -m pip install --upgrade pip
+          pip install pandas requests
+          pip install pandas_ta --upgrade
           pip install git+https://github.com/suzit/tvdatafeed.git
 
       - name: Analizi Başlat
