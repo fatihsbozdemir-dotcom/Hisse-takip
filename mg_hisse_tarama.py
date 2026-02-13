@@ -39,9 +39,9 @@ def analiz():
 
                 durum = ""
                 # Kriterler: Yeşil temas, Sarı temas veya Kanal içi
-                if abs(fiyat - wma9) / wma9 < 0.012 or abs(fiyat - wma15) / wma15 < 0.012:
+                if abs(fiyat - wma9) / wma9 < 0.05 or abs(fiyat - wma15) / wma15 < 0.05:
                     durum = "🟢 4S Yeşil Bölge Temas"
-                elif abs(fiyat - wma55) / wma55 < 0.015:
+                elif abs(fiyat - wma55) / wma55 < 0.05:
                     durum = "🟡 4S Sarı Bölge Temas"
                 elif (wma15 > fiyat > wma55) or (wma9 > fiyat > wma55):
                     durum = "🌓 4S Kanal İçi (Sıkışma)"
