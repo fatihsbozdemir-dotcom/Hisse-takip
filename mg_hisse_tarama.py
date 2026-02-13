@@ -18,8 +18,8 @@ def analiz():
         df_sheet = pd.read_csv(SHEET_URL)
         hisseler = [f"{str(h).strip()}.IS" for h in df_sheet.iloc[:, 0].dropna()]
         
-        # 1 SAATLİK veri çekiyoruz (4 saatlik Yahoo'da yok)
-        data = yf.download(hisseler, period="2mo", interval="1h", group_by='ticker', threads=False)
+        # 1 saatlik veriyi 1 aylık çekiyoruz (4 saatlik yapı kurmak için en sağlıklısı)
+        data = yf.download(hisseler, period="1mo", interval="1h", group_by='ticker', threads=True)
         
         bulunan = []
 
@@ -28,52 +28,48 @@ def analiz():
                 df_1h = data[ticker].dropna()
                 if df_1h.empty: continue
                 
-                # --- 1 SAATLİĞİ 4 SAATLİĞE ÇEVİRME ---
-                logic = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
-                df = df_1h.resample('4H').apply(logic).dropna()
+                # --- TRADINGVIEW UYUMLU 4 SAATLİK MUM YAPISI ---
+                # Borsa İstanbul 10:00'da açılır. 10-14, 14-18 mumlarını doğru birleştirelim.
+                df = df_1h.resample('4H', offset='2H').agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                }).dropna()
                 
-                if len(df) < 60: continue 
-
-                # Ortalamalar
+                # MG-Hisse Ortalamaları (WMA)
                 df['wma9'] = wma(df['Close'], 9)
                 df['wma15'] = wma(df['Close'], 15)
                 df['wma55'] = wma(df['Close'], 55)
                 
+                # Son 6 mumda (24 saat) temas var mı?
                 son_6 = df.tail(6)
                 fiyat_simdi = df['Close'].iloc[-1]
                 
-                durum = ""
-                min_fark = 100
-
                 for i in range(len(son_6)):
                     f = son_6['Close'].iloc[i]
                     w9 = son_6['wma9'].iloc[i]
                     w15 = son_6['wma15'].iloc[i]
                     w55 = son_6['wma55'].iloc[i]
                     
-                    fark = min(abs(f-w9)/w9, abs(f-w15)/w15, abs(f-w55)/w55)
-                    if fark < min_fark: min_fark = fark
-
+                    # Hassasiyeti %4 yapalım ki hiçbir şeyi kaçırmasın
                     if abs(f-w9)/w9 < 0.04 or abs(f-w15)/w15 < 0.04:
-                        durum = "🟢 Yeşil Bölge (WMA 9/15)"
+                        bulunan.append(f"📍 *{ticker.replace('.IS','')}* 🟢 Yeşil Temas\n💰 Fiyat: {fiyat_simdi:.2f}")
+                        break # Bir kez bulması yeterli
                     elif abs(f-w55)/w55 < 0.04:
-                        durum = "🟡 Sarı Bölge (WMA 55)"
-                    elif (max(w9, w15) > f > w55):
-                        durum = "🌓 Kanal İçi"
+                        bulunan.append(f"📍 *{ticker.replace('.IS','')}* 🟡 Sarı Temas\n💰 Fiyat: {fiyat_simdi:.2f}")
+                        break
 
-                if durum:
-                    bulunan.append(f"📍 *{ticker.replace('.IS','')}*\n💰 Fiyat: {fiyat_simdi:.2f}\n📢 {durum}\n🎯 Fark: %{min_fark*100:.1f}")
-
-            except Exception as e:
-                continue
+            except: continue
 
         if bulunan:
-            t_mesaj("🕒 *MG-HİSSE V1: 4 SAATLİK ANALİZ (1H'den Çevrildi)*\n\n" + "\n\n".join(bulunan))
+            t_mesaj("🕒 *MG-HİSSE V1 (4S) TARAMA SONUCU*\n\n" + "\n\n".join(set(bulunan)))
         else:
-            t_mesaj("✅ 4 Saatlik periyotta kriterlere uygun hisse bulunamadı.")
+            t_mesaj("✅ Tarama yapıldı, kriterlere uyan hisse şu an yok.")
             
     except Exception as e:
-        t_mesaj(f"❌ MG-Hisse Sistem Hatası: {str(e)}")
+        t_mesaj(f"❌ Hata: {str(e)}")
 
 if __name__ == "__main__":
     analiz()
