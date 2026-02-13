@@ -1,0 +1,26 @@
+name: MG-Hisse Sabah Taraması
+
+on:
+  workflow_dispatch: # İstediğinde telefonundan manuel başlatman için
+  schedule:
+    # 05:00 UTC = 08:00 TSİ (Türkiye Saati)
+    - cron: '0 5 * * 1-5' # Hafta içi her gün sabah 08:00
+
+jobs:
+  run-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu Cek
+        uses: actions/checkout@v3
+
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Paketleri Kur
+        run: |
+          pip install yfinance pandas requests
+
+      - name: MG-Hisse Taramasini Calistir
+        run: python mg_hisse_tarama.py
