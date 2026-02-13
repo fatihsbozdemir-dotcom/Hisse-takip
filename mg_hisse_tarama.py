@@ -2,7 +2,6 @@ import yfinance as yf
 import pandas as pd
 import requests
 
-# --- AYARLAR ---
 TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
 CHAT_ID = "8599240314"
 SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/export?format=csv"
@@ -10,74 +9,76 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO
 def t_mesaj(mesaj):
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': mesaj, 'parse_mode': 'Markdown'})
 
-def wma(data, period):
+def wma(series, period):
+    # TradingView uyumlu WMA hesaplaması
     weights = list(range(1, period + 1))
-    return data.rolling(period).apply(lambda x: sum(weights * x) / sum(weights), raw=True)
+    return series.rolling(period).apply(lambda x: (weights * x).sum() / sum(weights), raw=True)
 
 def analiz():
     try:
         df_sheet = pd.read_csv(SHEET_URL)
         hisseler = [f"{str(h).strip()}.IS" for h in df_sheet.iloc[:, 0].dropna()]
         
-        # 4 saatlik veri çekme
-        data = yf.download(hisseler, period="1mo", interval="4h", group_by='ticker', threads=False)
+        # Daha fazla veri çekiyoruz ki WMA sağlıklı hesaplansın
+        data = yf.download(hisseler, period="3mo", interval="4h", group_by='ticker', threads=False)
         
         bulunan = []
+        yakindakiler = [] # Temas olmasa da çok yaklaşanlar için
+
         for ticker in hisseler:
             try:
                 df = data[ticker].dropna()
                 if len(df) < 60: continue 
                 
-                # Ortalamaları hesapla
+                # Ortalamalar
                 df['wma9'] = wma(df['Close'], 9)
                 df['wma15'] = wma(df['Close'], 15)
                 df['wma55'] = wma(df['Close'], 55)
                 
-                # --- SON 6 MUMU KONTROL ET ---
-                # Son 6 periyodu (24 saat) alıyoruz
-                son_6_mum = df.tail(6)
+                son_6 = df.tail(6)
                 fiyat_simdi = df['Close'].iloc[-1]
                 
-                temas_yesil = False
-                temas_sari = False
-                kanal_ici = False
-                
-                for i in range(len(son_6_mum)):
-                    fiyat = son_6_mum['Close'].iloc[i]
-                    w9 = son_6_mum['wma9'].iloc[i]
-                    w15 = son_6_mum['wma15'].iloc[i]
-                    w55 = son_6_mum['wma55'].iloc[i]
-                    
-                    # Yeşil Bölge Temas Kontrolü (%3 Hassasiyet)
-                    if abs(fiyat - w9) / w9 < 0.03 or abs(fiyat - w15) / w15 < 0.03:
-                        temas_yesil = True
-                    
-                    # Sarı Bölge Temas Kontrolü
-                    if abs(fiyat - w55) / w55 < 0.03:
-                        temas_sari = True
-                        
-                    # Kanal İçi Kontrolü
-                    if (max(w9, w15) > fiyat > w55):
-                        kanal_ici = True
-
-                # Durum Belirleme (Öncelik sırasına göre)
+                en_dusuk_fark = 100
                 durum = ""
-                if temas_yesil:
-                    durum = "🟢 4S Yeşil Bölge (Son 6 Mumda Temas Var)"
-                elif temas_sari:
-                    durum = "🟡 4S Sarı Bölge (Son 6 Mumda Temas Var)"
-                elif kanal_ici:
-                    durum = "🌓 4S Kanal İçi (Son 6 Mumda Sıkışma)"
+
+                for i in range(len(son_6)):
+                    f = son_6['Close'].iloc[i]
+                    w9 = son_6['wma9'].iloc[i]
+                    w15 = son_6['wma15'].iloc[i]
+                    w55 = son_6['wma55'].iloc[i]
+                    
+                    # Farkları hesapla
+                    fark_w9 = abs(f - w9) / w9
+                    fark_w15 = abs(f - w15) / w15
+                    fark_w55 = abs(f - w55) / w55
+                    
+                    min_fark = min(fark_w9, fark_w15, fark_w55)
+                    if min_fark < en_dusuk_fark: en_dusuk_fark = min_fark
+
+                    # KRİTERLERİ ESNETİYORUZ (%5 Hassasiyet)
+                    if fark_w9 < 0.05 or fark_w15 < 0.05:
+                        durum = "🟢 Yeşil Bölge (WMA 9/15)"
+                    elif fark_w55 < 0.05:
+                        durum = "🟡 Sarı Bölge (WMA 55)"
+                    elif (max(w9, w15) > f > w55):
+                        durum = "🌓 Kanal İçi"
 
                 if durum:
-                    bulunan.append(f"📍 *{ticker.replace('.IS','')}*\n💰 Fiyat: {fiyat_simdi:.2f}\n📢 {durum}")
+                    bulunan.append(f"📍 *{ticker.replace('.IS','')}*\n💰 Fiyat: {fiyat_simdi:.2f}\n📢 {durum}\n🎯 Fark: %{en_dusuk_fark*100:.1f}")
+                else:
+                    # Hiçbir şey bulamazsa en azından %10 yakındaki en iyi adayı listeye ekle
+                    if en_dusuk_fark < 0.10:
+                        yakindakiler.append(f"{ticker.replace('.IS','')}(%{en_dusuk_fark*100:.1f})")
+
             except:
                 continue
 
         if bulunan:
-            t_mesaj("🕒 *MG-HİSSE V1: 6 MUMLUK (24S) ANALİZ*\n\n" + "\n\n".join(bulunan))
+            t_mesaj("🕒 *MG-HİSSE V1: SON 6 MUM ANALİZİ*\n\n" + "\n\n".join(bulunan))
+        elif yakindakiler:
+            t_mesaj(f"ℹ️ Tam temas yok ama yaklaşanlar:\n{', '.join(yakindakiler)}")
         else:
-            t_mesaj("✅ Son 6 mumda kriterlere uygun bir temas bulunamadı.")
+            t_mesaj("❌ Veri çekildi ama kriterlere veya yakınına uygun hisse bulunamadı.")
             
     except Exception as e:
         t_mesaj(f"❌ MG-Hisse Hata: {str(e)}")
