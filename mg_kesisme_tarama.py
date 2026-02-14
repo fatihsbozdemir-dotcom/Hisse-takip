@@ -18,10 +18,11 @@ def t_mesaj(mesaj):
 def analiz():
     url = "https://scanner.tradingview.com/turkey/scan"
     
+    # Sadece Haftalık EMA 144 (EMA144|52) verisini çekiyoruz
     payload = {
         "filter": [{"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}],
         "options": {"lang": "tr"},
-        "columns": ["name", "close", "EMA144", "EMA144|52", "open", "low"],
+        "columns": ["name", "close", "EMA144|52", "open|52", "low|52", "high|52"],
         "range": [0, 1000]
     }
     
@@ -29,7 +30,7 @@ def analiz():
         res = requests.post(url, json=payload, timeout=20).json()
         hisseler = res.get("data", [])
         
-        t_mesaj(f"🎯 *{len(hisseler)}* hisse sadece *EMA 144* desteği için taranıyor...")
+        t_mesaj(f"📅 *Haftalık Tarama:* {len(hisseler)} hisse sadece *Haftalık EMA 144* desteği için inceleniyor...")
 
         found_any = False
         for item in hisseler:
@@ -37,27 +38,23 @@ def analiz():
             if len(d) < 6: continue
             
             hisse, fiyat = d[0], d[1]
-            ema_g, ema_h = d[2], d[3]
-            acilis, dusuk = d[4], d[5]
+            ema_h = d[2]
+            acilis_h, dusuk_h = d[3], d[4]
             
-            # --- EMA 144 TEMAS KONTROLÜ (%1.5 Esneklik) ---
-            hit_ema = None
-            if ema_g and (0.985 <= fiyat/ema_g <= 1.015):
-                hit_ema = "Günlük EMA 144"
-            elif ema_h and (0.985 <= fiyat/ema_h <= 1.015):
-                hit_ema = "Haftalık EMA 144"
-            
-            if hit_ema:
+            # --- HAFTALIK EMA 144 TEMAS KONTROLÜ (%1.5 Esneklik) ---
+            if ema_h and (0.985 <= fiyat/ema_h <= 1.015):
                 found_any = True
-                # Mum yapısı: Çekiç kontrolü
-                body = abs(fiyat - acilis)
-                lower_shadow = min(acilis, fiyat) - dusuk
+                
+                # Haftalık Mum Yapısı: Çekiç kontrolü
+                body = abs(fiyat - acilis_h)
+                lower_shadow = min(acilis_h, fiyat) - dusuk_h
                 is_hammer = lower_shadow > (body * 2) and body > 0
                 
-                # Grafik çizimi
-                df = yf.download(f"{hisse}.IS", period="2y", interval="1d", progress=False)
+                # Grafik çizimi (Haftalık veri çekiyoruz)
+                df = yf.download(f"{hisse}.IS", period="5y", interval="1wk", progress=False)
                 if df.empty: continue
                 
+                # Veri temizleme
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
                 
@@ -65,17 +62,18 @@ def analiz():
                     df[col] = pd.to_numeric(df[col], errors='coerce')
                 df = df.dropna()
 
-                df['EMA144'] = df['Close'].ewm(span=144, adjust=False).mean()
+                # Haftalık EMA 144 hesapla
+                df['EMA144_W'] = df['Close'].ewm(span=144, adjust=False).mean()
                 
-                dosya = f"{hisse}.png"
-                ap = [mpf.make_addplot(df['EMA144'], color='orange', width=1.5)]
+                dosya = f"{hisse}_weekly.png"
+                ap = [mpf.make_addplot(df['EMA144_W'], color='orange', width=1.5)]
                 
-                status = "🔨 ÇEKİÇ + DESTEK" if is_hammer else "🛡️ DESTEK TEMASI"
+                status = "🔨 HAFTALIK ÇEKİÇ" if is_hammer else "🛡️ HAFTALIK DESTEK"
                 
                 mpf.plot(df, type='candle', style='charles', addplot=ap, volume=True,
-                         title=f"\n{hisse} - {hit_ema}", savefig=dosya)
+                         title=f"\n{hisse} - WEEKLY EMA 144", savefig=dosya)
                 
-                caption = f"💎 *{hisse}*\n📍 Temas: `{hit_ema}`\n💰 Fiyat: {fiyat:.2f}\n{status}"
+                caption = f"💎 *{hisse}* (Haftalık)\n📍 Destek: `EMA 144`\n💰 Fiyat: {fiyat:.2f}\n{status}"
                 
                 with open(dosya, 'rb') as photo:
                     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
@@ -84,7 +82,7 @@ def analiz():
                 os.remove(dosya)
 
         if not found_any:
-            t_mesaj("✅ Tarama bitti, şu an EMA 144 bölgesinde hisse yok.")
+            t_mesaj("✅ Haftalık tarama bitti. Şu an Haftalık EMA 144 bölgesinde hisse yok.")
 
     except Exception as e:
         t_mesaj(f"❌ Hata oluştu: {str(e)}")
