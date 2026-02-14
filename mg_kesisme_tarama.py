@@ -1,6 +1,5 @@
 import requests
 
-# --- AYARLAR ---
 TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
 CHAT_ID = "8599240314"
 
@@ -8,19 +7,19 @@ def t_mesaj(mesaj):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
         requests.post(url, json={'chat_id': CHAT_ID, 'text': mesaj, 'parse_mode': 'Markdown'}, timeout=15)
-    except:
-        pass
+    except: pass
 
 def analiz():
     url = "https://scanner.tradingview.com/turkey/scan"
     
+    # Dip tespiti için RSI, Bollinger ve EMA 200 kolonlarını ekliyoruz
     payload = {
         "filter": [
             {"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}
         ],
         "options": {"lang": "tr"},
-        "columns": ["name", "close", "WMA9", "WMA15", "EMA20", "EMA50", "relative_volume_10d_calc", "RSI"],
-        "sort": {"sortBy": "relative_volume_10d_calc", "sortOrder": "desc"},
+        "columns": ["name", "close", "RSI", "BB.lower", "BB.upper", "EMA200", "change", "relative_volume_10d_calc"],
+        "sort": {"sortBy": "RSI", "sortOrder": "asc"}, # En düşük RSI'dan (dipten) başla
         "range": [0, 300]
     }
 
@@ -29,50 +28,35 @@ def analiz():
         response = requests.post(url, json=payload, headers=headers, timeout=20)
         res_data = response.json()
         
-        # Veri yapısı kontrolü
-        if not res_data or "data" not in res_data or res_data["data"] is None:
-            t_mesaj("🔍 Şu an taranacak aktif veri bulunamadı.")
-            return
+        if not res_data or "data" not in res_data: return
 
-        wma_list = []
-        ema_list = []
+        dip_adaylari = []
 
         for item in res_data["data"]:
             d = item.get("d", [])
-            # Eksik veri kontrolü (Listenin tam olduğundan emin olalım)
-            if len(d) < 8: continue
-            
-            hisse = d[0]
-            fiyat = d[1]
-            w9, w15 = d[2], d[3]
-            e20, e50 = d[4], d[5]
-            hacim = d[6] if d[6] is not None else 0
-            rsi = d[7] if d[7] is not None else 0
+            hisse, fiyat, rsi, bb_alt, bb_ust, ema200, degisim, hacim = d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]
 
-            # --- WMA 9/15 KONTROLÜ ---
-            if all(v is not None for v in [w9, w15]):
-                w_fark = (w9 - w15) / w15
-                if 0 < w_fark < 0.006: # %0.6 taze kesişme
-                    wma_list.append(f"⚡ *{hisse}*\n💰 {fiyat:.2f} | 📊 Hacim: {hacim:.1f}x | 🕯 RSI: {rsi:.0f}")
+            if all(v is not None for v in [fiyat, rsi, bb_alt, ema200]):
+                
+                # KRİTER 1: RSI Aşırı Satım Bölgesinden Dönüyor (30-40 arası)
+                # KRİTER 2: Fiyat Bollinger Alt Bandına Değmiş veya Çok Yakın
+                # KRİTER 3: Fiyat EMA 200'ün Maksimum %3 Üzerinde (Zemine Yakınlık)
+                
+                bollinger_temas = fiyat <= bb_alt * 1.01 # Alt bandın %1 içinde
+                ema200_destek = (fiyat >= ema200) and (fiyat <= ema200 * 1.03)
+                rsi_dip = 25 < rsi < 42
+                
+                if (rsi_dip and bollinger_temas) or (ema200_destek and rsi_dip):
+                    durum = "🛡️ EMA 200 DESTEĞİ" if ema200_destek else "🕳️ BB ALT BANT DİBİ"
+                    dip_adaylari.append(f"💎 *{hisse}*\n📢 {durum}\n💰 Fiyat: {fiyat:.2f} | 🕯 RSI: {rsi:.1f}\n📊 Hacim: {hacim:.1f}x")
 
-            # --- EMA 20/50 KONTROLÜ ---
-            if all(v is not None for v in [e20, e50]):
-                e_fark = (e20 - e50) / e50
-                if 0 < e_fark < 0.008: # %0.8 taze kesişme
-                    ema_list.append(f"🔥 *{hisse}*\n💰 {fiyat:.2f} | 📊 Hacim: {hacim:.1f}x | 🕯 RSI: {rsi:.0f}")
-
-        # Mesaj Gönderimi
-        if wma_list:
-            t_mesaj("🚀 *WMA 9/15 TAZE KESİŞMELER*\n\n" + "\n\n".join(wma_list[:15]))
-        
-        if ema_list:
-            t_mesaj("💹 *EMA 20/50 TAZE KESİŞMELER*\n\n" + "\n\n".join(ema_list[:15]))
-
-        if not wma_list and not ema_list:
-            t_mesaj("✅ Tarama bitti. Şu an iki stratejiye de uyan taze kesişme yok.")
+        if dip_adaylari:
+            t_mesaj("⚓ *POTANSİYEL DİP OLUŞUMU YAPANLAR*\n_Bu hisseler teknik destek seviyelerinde bulunuyor._\n\n" + "\n\n".join(dip_adaylari[:15]))
+        else:
+            t_mesaj("✅ Bugün teknik dip formasyonuna uyan hisse bulunamadı.")
 
     except Exception as e:
-        t_mesaj(f"❌ Sistem Hatası: {str(e)}")
+        t_mesaj(f"❌ Dip Tarama Hatası: {str(e)}")
 
 if __name__ == "__main__":
     analiz()
