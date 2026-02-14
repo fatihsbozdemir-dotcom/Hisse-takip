@@ -14,26 +14,36 @@ def t_mesaj(mesaj):
 
 def analiz():
     url = "https://scanner.tradingview.com/turkey/scan"
-    # Formasyonlar için son 2 haftanın verisi gerekiyor (Açılış, Yüksek, Düşük, Kapanış)
+    # Formasyonlar için son 3 haftanın verisi (Sabah Yıldızı için 3 mum şart)
     payload = {
         "filter": [{"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}],
         "options": {"lang": "tr"},
-        "columns": ["name", "close", "open|52", "low|52", "high|52", "prev_close|52", "open_prev|52"],
+        "columns": ["name", "close", "open|52", "low|52", "high|52", "prev_close|52", "open_prev|52", "close[2]|52", "open[2]|52"],
         "range": [0, 1000]
     }
     
     try:
         res = requests.post(url, json=payload, timeout=20).json()
         hisseler = res.get("data", [])
+        if not hisseler:
+            t_mesaj("⚠️ Veri çekilemedi veya liste boş.")
+            return
+
         t_mesaj("🚀 *Büyük Yükseliş Formasyonları Taraması Başladı...*")
 
         for item in hisseler:
-            d = item.get('d', [])
-            hisse = d[0]
-            c1, o1, l1, h1 = d[1], d[2], d[3], d[4] # Bu haftanın verileri
-            c2, o2 = d[5], d[6]                     # Geçen haftanın verileri (Yutan Boğa vb. için)
+            d = item.get('d')
+            if d is None: continue # NoneType hatasını burası çözer
             
-            if not all([c1, o1, l1, h1, c2, o2]): continue
+            try:
+                hisse = d[0]
+                c1, o1, l1, h1 = d[1], d[2], d[3], d[4] # Bu hafta
+                c2, o2 = d[5], d[6]                     # Geçen hafta
+                c3, o3 = d[7], d[8]                     # Önceki hafta
+            except (IndexError, TypeError): continue # Eksik sütun varsa atla
+
+            # Verilerin sayısal olduğunu kontrol et
+            if not all(isinstance(x, (int, float)) for x in [c1, o1, l1, h1, c2, o2]): continue
 
             formasyon = None
             body1 = abs(c1 - o1)
@@ -46,17 +56,18 @@ def analiz():
             
             # 2. TERS ÇEKİÇ (Inverted Hammer)
             elif (upper_s1 > body1 * 2) and (lower_s1 < body1 * 0.5) and body1 > 0:
-                formasyon = "inverted_hammer" # Genelde dipte anlamlıdır
                 formasyon = "⛏️ Ters Çekiç"
 
             # 3. YUTAN BOĞA (Bullish Engulfing)
-            # Geçen hafta kırmızı, bu hafta yeşil ve bu haftanın gövdesi geçen haftayı yutuyor
-            elif c2 < o2 and c1 > o1 and c1 > o2 and o1 < c2:
+            elif c2 < o2 and c1 > o1 and c1 >= o2 and o1 <= c2:
                 formasyon = "🌊 Yutan Boğa (Engulfing)"
 
-            # 4. DELEN ÇİZGİ (Piercing Line)
-            # Geçen hafta kırmızı, bu hafta geçen haftanın orta noktasının üzerinde kapatıyor
-            elif c2 < o2 and c1 > o1 and o1 < l1*1.05 and c1 > (o2 + c2)/2 and c1 < o2:
+            # 4. SABAH YILDIZI (Morning Star)
+            elif c3 < o3 and abs(c2-o2) < abs(c3-o3)*0.3 and c1 > o1 and c1 > (c3+o3)/2:
+                formasyon = "⭐ Sabah Yıldızı (Morning Star)"
+
+            # 5. DELEN ÇİZGİ (Piercing Line)
+            elif c2 < o2 and c1 > o1 and o1 < c2 and c1 > (o2 + c2)/2 and c1 < o2:
                 formasyon = "🌅 Delen Çizgi (Piercing)"
 
             if formasyon:
@@ -71,9 +82,8 @@ def analiz():
                 
                 caption = (f"🔥 *{hisse}* - Formasyon Tespit Edildi!\n"
                            f"📊 Formasyon: `{formasyon}`\n"
-                           f"💰 Güncel Fiyat: `{c1:.2f}`\n"
-                           f"📈 Haftalık Yüksek: `{h1:.2f}`\n"
-                           f"📉 Haftalık Düşük: `{l1:.2f}`")
+                           f"💰 Fiyat: `{c1:.2f}`\n"
+                           f"📈 Yüksek: `{h1:.2f}` | 📉 Düşük: `{l1:.2f}`")
                 
                 with open(dosya, 'rb') as photo:
                     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
@@ -82,7 +92,7 @@ def analiz():
                 os.remove(dosya)
 
     except Exception as e:
-        t_mesaj(f"❌ Hata: {str(e)}")
+        t_mesaj(f"❌ Kritik Hata: {str(e)}")
 
 if __name__ == "__main__":
     analiz()
