@@ -13,42 +13,48 @@ def t_mesaj(mesaj):
     except: pass
 
 def analiz():
+    # TradingView'dan sadece hisse listesini ve güncel fiyatı çekiyoruz (En stabil kısım)
     url = "https://scanner.tradingview.com/turkey/scan"
-    # Formasyonlar için son 3 haftanın verisi (Sabah Yıldızı için 3 mum şart)
     payload = {
         "filter": [{"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}],
         "options": {"lang": "tr"},
-        "columns": ["name", "close", "open|52", "low|52", "high|52", "prev_close|52", "open_prev|52", "close[2]|52", "open[2]|52"],
+        "columns": ["name", "close"],
         "range": [0, 1000]
     }
     
     try:
         res = requests.post(url, json=payload, timeout=20).json()
-        hisseler = res.get("data", [])
-        if not hisseler:
-            t_mesaj("⚠️ Veri çekilemedi veya liste boş.")
+        data = res.get("data", [])
+        if not data:
+            t_mesaj("⚠️ Liste boş döndü, bağlantı kontrol ediliyor...")
             return
 
-        t_mesaj("🚀 *Büyük Yükseliş Formasyonları Taraması Başladı...*")
+        t_mesaj(f"🚀 *{len(data)}* hisse için haftalık mum formasyonları analiz ediliyor...")
 
-        for item in hisseler:
-            d = item.get('d')
-            if d is None: continue # NoneType hatasını burası çözer
+        for item in data:
+            hisse = item['d'][0]
+            fiyat = item['d'][1]
             
-            try:
-                hisse = d[0]
-                c1, o1, l1, h1 = d[1], d[2], d[3], d[4] # Bu hafta
-                c2, o2 = d[5], d[6]                     # Geçen hafta
-                c3, o3 = d[7], d[8]                     # Önceki hafta
-            except (IndexError, TypeError): continue # Eksik sütun varsa atla
+            # Detaylı veriyi yfinance üzerinden çekiyoruz (Daha güvenilir)
+            df = yf.download(f"{hisse}.IS", period="6mo", interval="1wk", progress=False)
+            
+            if df.empty or len(df) < 4: continue
+            
+            # Multi-index temizliği
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
 
-            # Verilerin sayısal olduğunu kontrol et
-            if not all(isinstance(x, (int, float)) for x in [c1, o1, l1, h1, c2, o2]): continue
-
+            # Son 3 haftanın verileri (0: en yeni, 1: geçen hafta, 2: önceki hafta)
+            m1 = df.iloc[-1] # Bu hafta
+            m2 = df.iloc[-2] # Geçen hafta
+            m3 = df.iloc[-3] # Önceki hafta
+            
             formasyon = None
-            body1 = abs(c1 - o1)
-            lower_s1 = min(o1, c1) - l1
-            upper_s1 = h1 - max(o1, c1)
+            
+            # Mum Parametreleri
+            body1 = abs(m1['Close'] - m1['Open'])
+            lower_s1 = min(m1['Open'], m1['Close']) - m1['Low']
+            upper_s1 = m1['High'] - max(m1['Open'], m1['Close'])
             
             # 1. ÇEKİÇ (Hammer)
             if (lower_s1 > body1 * 2) and (upper_s1 < body1 * 0.5) and body1 > 0:
@@ -59,37 +65,32 @@ def analiz():
                 formasyon = "⛏️ Ters Çekiç"
 
             # 3. YUTAN BOĞA (Bullish Engulfing)
-            elif c2 < o2 and c1 > o1 and c1 >= o2 and o1 <= c2:
+            elif m2['Close'] < m2['Open'] and m1['Close'] > m1['Open'] and \
+                 m1['Close'] >= m2['Open'] and m1['Open'] <= m2['Close']:
                 formasyon = "🌊 Yutan Boğa (Engulfing)"
 
             # 4. SABAH YILDIZI (Morning Star)
-            elif c3 < o3 and abs(c2-o2) < abs(c3-o3)*0.3 and c1 > o1 and c1 > (c3+o3)/2:
-                formasyon = "⭐ Sabah Yıldızı (Morning Star)"
-
-            # 5. DELEN ÇİZGİ (Piercing Line)
-            elif c2 < o2 and c1 > o1 and o1 < c2 and c1 > (o2 + c2)/2 and c1 < o2:
-                formasyon = "🌅 Delen Çizgi (Piercing)"
+            elif m3['Close'] < m3['Open'] and abs(m2['Close']-m2['Open']) < abs(m3['Close']-m3['Open'])*0.3 \
+                 and m1['Close'] > m1['Open'] and m1['Close'] > (m3['Open'] + m3['Close'])/2:
+                formasyon = "⭐ Sabah Yıldızı"
 
             if formasyon:
-                df = yf.download(f"{hisse}.IS", period="1y", interval="1wk", progress=False)
-                if df.empty: continue
-                
-                if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-                
                 dosya = f"{hisse}_form.png"
                 mpf.plot(df, type='candle', style='charles', volume=True,
                          title=f"\n{hisse} - {formasyon}", savefig=dosya)
                 
                 caption = (f"🔥 *{hisse}* - Formasyon Tespit Edildi!\n"
                            f"📊 Formasyon: `{formasyon}`\n"
-                           f"💰 Fiyat: `{c1:.2f}`\n"
-                           f"📈 Yüksek: `{h1:.2f}` | 📉 Düşük: `{l1:.2f}`")
+                           f"💰 Fiyat: `{m1['Close']:.2f}`\n"
+                           f"📈 Yüksek: `{m1['High']:.2f}` | 📉 Düşük: `{m1['Low']:.2f}`")
                 
                 with open(dosya, 'rb') as photo:
                     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
                                   data={'chat_id': CHAT_ID, 'caption': caption, 'parse_mode': 'Markdown'}, 
                                   files={'photo': photo})
                 os.remove(dosya)
+
+        t_mesaj("✅ Haftalık formasyon taraması tamamlandı.")
 
     except Exception as e:
         t_mesaj(f"❌ Kritik Hata: {str(e)}")
