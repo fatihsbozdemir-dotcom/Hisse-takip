@@ -20,11 +20,9 @@ def calculate_wma(df, length):
 
 def analiz():
     try:
-        # Google Sheet'ten hisse listesini çek
         df_sheet = pd.read_csv(SHEET_URL)
         hisseler = [f"{str(h).strip()}.IS" for h in df_sheet.iloc[:, 0].dropna()]
         
-        # Günlük veri çek (3 aylık yeterli)
         data = yf.download(hisseler, period="3mo", interval="1d", group_by='ticker', threads=True)
         
         kesisenler = []
@@ -34,27 +32,33 @@ def analiz():
                 df = data[ticker].dropna()
                 if len(df) < 20: continue 
 
-                # WMA 9 ve 15 Hesaplama
                 df['wma9'] = calculate_wma(df, 9)
                 df['wma15'] = calculate_wma(df, 15)
 
-                # Kesişme Kontrolü (Cross)
-                bugun_w9 = df['wma9'].iloc[-1]
-                bugun_w15 = df['wma15'].iloc[-1]
-                dun_w9 = df['wma9'].iloc[-2]
-                dun_w15 = df['wma15'].iloc[-2]
+                # Son 3 günü kontrol et (Bugün, Dün, Önceki Gün)
+                # i=1 (Bugün), i=2 (Dün), i=3 (Önceki Gün) kesişmiş mi?
+                for i in range(1, 4):
+                    idx_bugun = -i
+                    idx_dun = -(i + 1)
+                    
+                    bugun_w9 = df['wma9'].iloc[idx_bugun]
+                    bugun_w15 = df['wma15'].iloc[idx_bugun]
+                    dun_w9 = df['wma9'].iloc[idx_dun]
+                    dun_w15 = df['wma15'].iloc[idx_dun]
 
-                # Golden Cross: Dün 9, 15'in altındayken bugün üstüne çıkmış mı?
-                if dun_w9 <= dun_w15 and bugun_w9 > bugun_w15:
-                    fiyat = df['Close'].iloc[-1]
-                    kesisenler.append(f"🚀 *{ticker.replace('.IS','')}*\n✅ Günlükte WMA 9/15 Kesişti!\n💰 Fiyat: {fiyat:.2f}")
+                    # Golden Cross kontrolü
+                    if dun_w9 <= dun_w15 and bugun_w9 > bugun_w15:
+                        fiyat = df['Close'].iloc[idx_bugun]
+                        gun_bilgisi = "Bugün" if i == 1 else f"{i-1} Gün Önce"
+                        kesisenler.append(f"🚀 *{ticker.replace('.IS','')}*\n✅ WMA 9/15 Kesişimi: *{gun_bilgisi}*\n💰 O Günkü Fiyat: {fiyat:.2f}")
+                        break # Bir kez bulması yeterli, döngüden çık
             except:
                 continue
 
         if kesisenler:
-            t_mesaj("🔔 *MG-HİSSE GÜNLÜK KESİŞME RAPORU*\n\n" + "\n\n".join(kesisenler))
+            t_mesaj("🔔 *MG-HİSSE GÜNLÜK KESİŞME RAPORU (SON 3 GÜN)*\n\n" + "\n\n".join(kesisenler))
         else:
-            t_mesaj("✅ Bugün Günlük WMA 9/15 kesişmesi yapan hisse bulunamadı.")
+            t_mesaj("✅ Son 3 gün içerisinde WMA 9/15 kesişmesi yapan yeni hisse bulunamadı.")
             
     except Exception as e:
         t_mesaj(f"❌ Kesişme Hatası: {str(e)}")
