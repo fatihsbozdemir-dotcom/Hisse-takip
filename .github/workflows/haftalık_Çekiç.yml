@@ -1,0 +1,24 @@
+name: Haftalık Çekiç Taraması
+
+on:
+  workflow_dispatch: # Elle başlatma butonu
+  schedule:
+    - cron: '0 17 * * 5' # Her Cuma Türkiye saati ile 20:00 (17:00 UTC)
+
+jobs:
+  run-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu Cek
+        uses: actions/checkout@v3
+
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Paketleri Kur
+        run: pip install pandas requests yfinance mplfinance
+
+      - name: Taramayi Calistir
+        run: python haftalik_cekic_tarama.py
