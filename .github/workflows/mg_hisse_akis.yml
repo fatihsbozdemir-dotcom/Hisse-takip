@@ -1,15 +1,15 @@
-name: MG-Hisse Otomatik Tarama
+name: MG-Kesişme Taraması
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
   schedule:
-    - cron: '0 5 * * 1-5' # Hafta içi her gün 08:00 TSİ
+    - cron: '0 15 * * 1-5' # Hafta içi her gün 18:00 TSİ (Kapanışa yakın)
 
 jobs:
-  build:
+  run-scan:
     runs-on: ubuntu-latest
     steps:
-      - name: Kodları Al
+      - name: Kodu Cek
         uses: actions/checkout@v3
 
       - name: Python Kur
@@ -17,10 +17,8 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Kütüphaneleri Yükle
-        run: |
-          pip install pandas requests
-          pip install git+https://github.com/suzit/tvdatafeed.git
+      - name: Paketleri Kur
+        run: pip install yfinance pandas requests
 
-      - name: Analizi Başlat
-        run: python mg_hisse_tarama.py
+      - name: Taramayi Calistir
+        run: python mg_kesisme_tarama.py
