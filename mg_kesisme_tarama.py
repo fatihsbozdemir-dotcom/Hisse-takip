@@ -12,56 +12,60 @@ def t_mesaj(mesaj):
         pass
 
 def analiz():
+    # TradingView genel borsa tarama endpoint'i
     url = "https://scanner.tradingview.com/turkey/scan"
     
-    # En stabil filtre yapısı
+    # En yalın ve TV'nin reddedemeyeceği sorgu formatı
     payload = {
         "filter": [
             {"left": "EMA20", "operation": "above", "right": "EMA50"},
             {"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}
         ],
         "options": {"lang": "tr"},
-        "markets": ["turkey"],
-        "symbols": {"query": {"types": []}, "tickers": []},
-        "columns": ["name", "close", "EMA20", "EMA50", "change"],
-        "sort": {"sortBy": "change", "sortOrder": "desc"},
-        "range": [0, 100]
+        "columns": ["name", "close", "EMA20", "EMA50"],
+        "sort": {"sortBy": "name", "sortOrder": "asc"},
+        "range": [0, 150] # İlk 150 hisseyi tara
     }
 
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        }
+        
         response = requests.post(url, json=payload, headers=headers, timeout=20)
         
         if response.status_code != 200:
-            t_mesaj(f"⚠️ TV Sunucusu hata döndürdü: {response.status_code}")
+            # 400 hatası alırsak payload'ı basitleştirmemiz gerekebilir
+            t_mesaj(f"⚠️ TV Sunucu Yanıtı: {response.status_code}\nDetay: {response.text[:100]}")
             return
 
         res_data = response.json()
         
-        # 'NoneType' hatasını engelleyen kritik kontrol
-        if not res_data or "data" not in res_data or res_data["data"] is None:
-            t_mesaj("🔍 Şu an TV kriterlerine uyan aktif hisse verisi bulunamadı (Borsa kapalı veya filtreye uygun hisse yok).")
+        if not res_data or "data" not in res_data:
+            t_mesaj("🔍 Veri bulunamadı.")
             return
 
         bulunanlar = []
         for item in res_data["data"]:
-            # Veri içeriği kontrolü
-            if "d" in item and len(item["d"]) >= 4:
-                hisse = item['d'][0]
-                fiyat = item['d'][1]
-                e20 = item['d'][2]
-                e50 = item['d'][3]
+            d = item.get("d", [])
+            if len(d) >= 4:
+                hisse = d[0]
+                fiyat = d[1]
+                e20 = d[2]
+                e50 = d[3]
                 
-                # Sadece yeni kesişenleri (fark %1'den küçük olanlar) alalım
-                if e20 and e50: # Verilerin None olmadığını kontrol et
+                if e20 and e50:
                     fark = (e20 - e50) / e50
-                    if 0 < fark < 0.01: # %1 esneklik payı
-                        bulunanlar.append(f"🔥 *{hisse}*\n✅ EMA 20/50 Üstünde\n💰 Fiyat: {fiyat:.2f}\n🎯 Fark: %{fark*100:.2f}")
+                    # Yeni kesişmiş veya çok yakın (%0.8 marj)
+                    if 0 < fark < 0.008:
+                        bulunanlar.append(f"🔥 *{hisse}*\n✅ EMA 20/50 Kesişti\n💰 Fiyat: {fiyat:.2f}\n🎯 Fark: %{fark*100:.2f}")
 
         if bulunanlar:
-            t_mesaj("🚀 *TRADINGVIEW CANLI TARAMA*\n\n" + "\n\n".join(bulunanlar[:15]))
+            t_mesaj("🚀 *TRADINGVIEW GÜNLÜK TARAMA*\n\n" + "\n\n".join(bulunanlar[:20]))
         else:
-            t_mesaj("✅ Tarama yapıldı, kriterlerinize uygun yeni kesişmiş hisse şu an yok.")
+            t_mesaj("✅ Tarama bitti. Şu an kriterlere uyan (EMA 20/50 yeni kesişmiş) hisse bulunamadı.")
 
     except Exception as e:
         t_mesaj(f"❌ Sistem Hatası: {str(e)}")
