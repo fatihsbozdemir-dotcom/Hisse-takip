@@ -27,7 +27,7 @@ def analiz():
         data = res.get("data", [])
         if not data: return
 
-        t_mesaj(f"🚀 *{len(data)}* hisse taranıyor, formasyonlar işaretleniyor...")
+        t_mesaj(f"🎯 *{len(data)}* hisse taranıyor, formasyonlar kare içine alınıyor...")
 
         for item in data:
             hisse = item['d'][0]
@@ -36,37 +36,36 @@ def analiz():
             if df.empty or len(df) < 5: continue
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
-            # Son mum verileri
             m1 = df.iloc[-1] # Bu hafta
             m2 = df.iloc[-2] # Geçen hafta
             
             formasyon = None
             body1 = abs(m1['Close'] - m1['Open'])
-            lower_s1 = min(m1['Open'], m1['Close']) - m1['Low']
-            upper_s1 = m1['High'] - max(m1['Open'], m1['Close'])
+            low1, high1 = m1['Low'], m1['High']
             
             # --- Formasyon Kontrolleri ---
-            if (lower_s1 > body1 * 2) and (upper_s1 < body1 * 0.5) and body1 > 0:
+            # 1. Çekiç
+            if (min(m1['Open'], m1['Close']) - low1) > body1 * 2 and (high1 - max(m1['Open'], m1['Close'])) < body1 * 0.5 and body1 > 0:
                 formasyon = "🔨 Çekiç"
-            elif (upper_s1 > body1 * 2) and (lower_s1 < body1 * 0.5) and body1 > 0:
-                formasyon = "⛏️ Ters Çekiç"
+            # 2. Yutan Boğa
             elif m2['Close'] < m2['Open'] and m1['Close'] > m1['Open'] and m1['Close'] >= m2['Open'] and m1['Open'] <= m2['Close']:
                 formasyon = "🌊 Yutan Boğa"
 
             if formasyon:
-                # İşaretleme için bir liste oluştur (Sadece son muma değer koy, gerisi NaN)
+                # Kareyi mumun tam ortasına (açılış ve kapanışın ortası) koyalım
                 markers = [np.nan] * len(df)
-                # Formasyonun olduğu yerin altına işaret koymak için fiyatın %2 altını seçelim
-                markers[-1] = df['Low'].iloc[-1] * 0.98 
+                markers[-1] = (m1['Open'] + m1['Close']) / 2
                 
-                # İşaretleyici Ayarı (Mavi bir yukarı ok)
-                ap = [mpf.make_addplot(markers, type='scatter', marker='^', markersize=200, color='blue')]
+                # 's' = Square (Kare), markersize=30, alpha=0.3 (Şeffaf kare)
+                # edgecolors ile kenarlığı belirgin yapıyoruz
+                ap = [mpf.make_addplot(markers, type='scatter', marker='s', 
+                                      markersize=1500, color='orange', alpha=0.4)]
                 
-                dosya = f"{hisse}_isaretli.png"
+                dosya = f"{hisse}_form.png"
                 mpf.plot(df, type='candle', style='charles', volume=True,
                          addplot=ap, title=f"\n{hisse} - {formasyon}", savefig=dosya)
                 
-                caption = f"🔥 *{hisse}*\n📊 Formasyon: `{formasyon}`\n💰 Fiyat: `{m1['Close']:.2f}`\n📍 İşaretli bölgeye dikkat!"
+                caption = f"✅ *{hisse}*\n📊 Formasyon: `{formasyon}`\n💰 Fiyat: `{m1['Close']:.2f}`\n🟧 Turuncu kare ile işaretlendi!"
                 
                 with open(dosya, 'rb') as photo:
                     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
@@ -74,7 +73,7 @@ def analiz():
                                   files={'photo': photo})
                 os.remove(dosya)
 
-        t_mesaj("✅ İşaretli tarama tamamlandı.")
+        t_mesaj("✅ Kare işaretli tarama bitti.")
 
     except Exception as e:
         print(f"Hata: {e}")
