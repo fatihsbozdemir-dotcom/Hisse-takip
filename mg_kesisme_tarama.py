@@ -1,3 +1,4 @@
+
 import yfinance as yf
 import pandas as pd
 import requests
@@ -10,7 +11,7 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO
 def t_mesaj(mesaj):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
-        requests.post(url, json={'chat_id': CHAT_ID, 'text': mesaj, 'parse_mode': 'Markdown'}, timeout=10)
+        requests.post(url, json={'chat_id': CHAT_ID, 'text': mesaj, 'parse_mode': 'Markdown'}, timeout=15)
     except:
         pass
 
@@ -23,45 +24,59 @@ def analiz():
         df_sheet = pd.read_csv(SHEET_URL)
         hisseler = [f"{str(h).strip()}.IS" for h in df_sheet.iloc[:, 0].dropna()]
         
-        data = yf.download(hisseler, period="3mo", interval="1d", group_by='ticker', threads=True)
+        # EMA 50 için en az 6-8 aylık veri çekmek daha sağlıklıdır
+        data = yf.download(hisseler, period="8mo", interval="1d", group_by='ticker', threads=True)
         
-        kesisenler = []
+        sinyaller = []
 
         for ticker in hisseler:
             try:
                 df = data[ticker].dropna()
-                if len(df) < 20: continue 
+                if len(df) < 60: continue 
 
+                # Ortalamaları Hesapla
                 df['wma9'] = calculate_wma(df, 9)
                 df['wma15'] = calculate_wma(df, 15)
+                df['ema20'] = df['Close'].ewm(span=20, adjust=False).mean()
+                df['ema50'] = df['Close'].ewm(span=50, adjust=False).mean()
 
-                # Son 3 günü kontrol et (Bugün, Dün, Önceki Gün)
-                # i=1 (Bugün), i=2 (Dün), i=3 (Önceki Gün) kesişmiş mi?
-                for i in range(1, 4):
+                name = ticker.replace('.IS', '')
+                
+                # Son 5 iş gününü kontrol et
+                for i in range(1, 6):
                     idx_bugun = -i
                     idx_dun = -(i + 1)
                     
-                    bugun_w9 = df['wma9'].iloc[idx_bugun]
-                    bugun_w15 = df['wma15'].iloc[idx_bugun]
-                    dun_w9 = df['wma9'].iloc[idx_dun]
-                    dun_w15 = df['wma15'].iloc[idx_dun]
+                    zaman = "Bugün" if i == 1 else f"{i-1} Gün Önce"
 
-                    # Golden Cross kontrolü
-                    if dun_w9 <= dun_w15 and bugun_w9 > bugun_w15:
-                        fiyat = df['Close'].iloc[idx_bugun]
-                        gun_bilgisi = "Bugün" if i == 1 else f"{i-1} Gün Önce"
-                        kesisenler.append(f"🚀 *{ticker.replace('.IS','')}*\n✅ WMA 9/15 Kesişimi: *{gun_bilgisi}*\n💰 O Günkü Fiyat: {fiyat:.2f}")
-                        break # Bir kez bulması yeterli, döngüden çık
+                    # --- STRATEJİ 1: WMA 9 / 15 KESİŞİMİ ---
+                    if df['wma9'].iloc[idx_dun] <= df['wma15'].iloc[idx_dun] and \
+                       df['wma9'].iloc[idx_bugun] > df['wma15'].iloc[idx_bugun]:
+                        sinyaller.append(f"🚀 *{name}* - WMA 9/15\n✅ Kısa Vadeli Kesişme ({zaman})\n💰 Fiyat: {df['Close'].iloc[idx_bugun]:.2f}")
+
+                    # --- STRATEJİ 2: EMA 20 / 50 KESİŞİMİ ---
+                    if df['ema20'].iloc[idx_dun] <= df['ema50'].iloc[idx_dun] and \
+                       df['ema20'].iloc[idx_bugun] > df['ema50'].iloc[idx_bugun]:
+                        sinyaller.append(f"🔥 *{name}* - EMA 20/50\n✅ GÜÇLÜ TREND BAŞLANGICI ({zaman})\n💰 Fiyat: {df['Close'].iloc[idx_bugun]:.2f}")
+
             except:
                 continue
 
-        if kesisenler:
-            t_mesaj("🔔 *MG-HİSSE GÜNLÜK KESİŞME RAPORU (SON 3 GÜN)*\n\n" + "\n\n".join(kesisenler))
+        # Telegram Mesaj Gönderme
+        if sinyaller:
+            # Aynı hisse için birden fazla sinyal varsa (nadir) ayırmak için
+            mesaj_metni = "🔔 *MG-HİSSE GÜNLÜK KESİŞME RAPORU*\n\n" + "\n\n".join(sinyaller)
+            # Mesaj çok uzunsa böl (Telegram sınırı 4096 karakter)
+            if len(mesaj_metni) > 4000:
+                t_mesaj(mesaj_metni[:4000])
+                t_mesaj(mesaj_metni[4000:])
+            else:
+                t_mesaj(mesaj_metni)
         else:
-            t_mesaj("✅ Son 3 gün içerisinde WMA 9/15 kesişmesi yapan yeni hisse bulunamadı.")
+            t_mesaj("✅ Tarama bitti. Son 5 günde WMA 9/15 veya EMA 20/50 kesişmesi yapan hisse bulunamadı.")
             
     except Exception as e:
-        t_mesaj(f"❌ Kesişme Hatası: {str(e)}")
+        t_mesaj(f"❌ Sistem Hatası: {str(e)}")
 
 if __name__ == "__main__":
     analiz()
