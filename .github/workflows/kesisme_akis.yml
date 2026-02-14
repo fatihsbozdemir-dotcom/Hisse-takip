@@ -3,7 +3,7 @@ name: MG-Kesişme Taraması
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 15 * * 1-5' # Hafta içi her gün 18:00 TSİ (Kapanışa yakın)
+    - cron: '30 15 * * 1-5' # Hafta içi her gün 18:30 TSİ (Kapanış verisiyle)
 
 jobs:
   run-scan:
@@ -18,7 +18,8 @@ jobs:
           python-version: '3.9'
 
       - name: Paketleri Kur
-        run: pip install yfinance pandas requests
+        run: |
+          pip install yfinance pandas requests
 
       - name: Taramayi Calistir
         run: python mg_kesisme_tarama.py
