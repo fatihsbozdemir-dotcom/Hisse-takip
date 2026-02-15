@@ -4,7 +4,7 @@ import mplfinance as mpf
 import requests
 import os
 
-# --- AYARLAR ---
+# --- AYARLAR (Bot Token ve ID'ni buraya yaz) ---
 TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
 CHAT_ID = "8599240314"
 
@@ -32,28 +32,27 @@ def analiz_yap():
         telegram_gonder("📉 *Günlük Hacim Kuruması Taraması Başladı...*\n(Günlük Mum + 20 Günlük Hacim Ortalaması Altı)")
 
         for sembol in hisseler:
-            # Günlük veri çek (Hem analiz hem grafik için GÜNLÜK)
+            # Günlük veri çek
             df = yf.download(f"{sembol}.IS", period="3mo", interval="1d", progress=False)
             
             if df.empty or len(df) < 21: continue
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
-            # --- HACİM KONTROLÜ (GÜNLÜK) ---
+            # --- HACİM KONTROLÜ (20 Günlük Ortalamanın Altı mı?) ---
             df['Vol_MA20'] = df['Volume'].rolling(window=20).mean()
-            su_anki_vol = df['Volume'].iloc[-1]
-            ort_vol = df['Vol_MA20'].iloc[-1]
+            bugunku_hacim = df['Volume'].iloc[-1]
+            hacim_ortalamasi = df['Vol_MA20'].iloc[-1]
 
-            # KRİTER: Bugünün hacmi, son 20 günün ortalamasının ALTINDAYSA
-            if su_anki_vol < ort_vol:
-                resim_adi = f"{sembol}_gunluk_kuruma.png"
+            if bugunku_hacim < hacim_ortalamasi:
+                resim_adi = f"{sembol}.png"
                 
-                # Sade Grafik: Sadece Günlük Mumlar, Hacim ve Fiyat
+                # Sadece Mumlar, Hacim ve Fiyat. Başka hiçbir şey yok.
                 mpf.plot(df, type='candle', style='charles', volume=True,
-                         title=f"\n{sembol} - GUNLUK HACIM KURUMASI", savefig=resim_adi)
+                         title=f"\n{sembol} - HACIM KURUMASI", savefig=resim_adi)
                 
                 son_mum = df.iloc[-1]
-                oran = (su_anki_vol / ort_vol) * 100
-                bilgi = (f"📉 *{sembol}* (Günlük)\n"
+                oran = (bugunku_hacim / hacim_ortalamasi) * 100
+                bilgi = (f"📉 *{sembol}*\n"
                          f"📊 Hacim: Ortalamanın `% {oran:.1f}` kadarı.\n"
                          f"💰 Fiyat: `{son_mum['Close']:.2f}`\n"
                          f"↕️ H: `{son_mum['High']:.2f}` | L: `{son_mum['Low']:.2f}`")
