@@ -1,0 +1,15 @@
+name: Hacimli Patlama Taraması
+on:
+  schedule:
+    - cron: '15 17 * * 5' # Cuma 20:15 (Diğerinden 15 dk sonra çalışsın)
+  workflow_dispatch:
+jobs:
+  run-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - run: pip install pandas yfinance mplfinance requests
+      - run: python hacim_patlamasi.py
