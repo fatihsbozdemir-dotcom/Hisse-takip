@@ -1,0 +1,17 @@
+name: Haber Akışı Takibi (Günde 3 Kez)
+on:
+  schedule:
+    - cron: '15 7 * * 1-5'   # TSİ 10:15 (Pazartesi-Cuma)
+    - cron: '15 11 * * 1-5'  # TSİ 14:15 (Pazartesi-Cuma)
+    - cron: '15 15 * * 1-5'  # TSİ 18:15 (Pazartesi-Cuma)
+  workflow_dispatch: # Manuel çalıştırmak için buton ekler
+jobs:
+  kap-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - run: pip install requests pytz
+      - run: python kap_takip.py
