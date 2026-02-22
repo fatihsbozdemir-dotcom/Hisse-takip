@@ -1,53 +1,26 @@
 import requests
-from datetime import datetime
-import pytz
 
-# --- BİLGİLERİN ---
 TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
-CHAT_ID = "-1003838602845"
-TOPIC_ID = "958" 
 
-def telegram_gonder(mesaj):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {
-        'chat_id': CHAT_ID,
-        'text': mesaj,
-        'parse_mode': 'Markdown',
-        'message_thread_id': TOPIC_ID
-    }
+def id_bul():
+    url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
     try:
-        res = requests.post(url, json=payload, timeout=15)
-        if res.status_code == 200:
-            print("✅ Mesaj başarıyla konuya gönderildi.")
+        res = requests.get(url).json()
+        if res["result"]:
+            for update in res["result"]:
+                # Mesaj veya Kanal postu fark etmeksizin ID'leri yakala
+                msg = update.get("message") or update.get("channel_post")
+                if msg:
+                    chat_id = msg["chat"]["id"]
+                    thread_id = msg.get("message_thread_id", "Konu ID bulunamadı")
+                    print(f"\n✅ BULUNAN BİLGİLER:")
+                    print(f"Grup (Chat) ID: {chat_id}")
+                    print(f"Konu (Topic) ID: {thread_id}")
+                    print(f"Mesaj Metni: {msg.get('text')}\n")
         else:
-            print(f"❌ Hata: {res.status_code} - {res.text}")
+            print("❌ Yeni mesaj bulunamadı. Lütfen gruptaki KAP konusuna bir şey yazıp tekrar çalıştırın!")
     except Exception as e:
-        print(f"❌ Gönderim hatası: {e}")
-
-def kap_cek():
-    print("KAP verileri taranıyor...")
-    url = "https://www.kap.org.tr/tr/api/disclosures"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=20)
-        bildirimler = response.json()
-        
-        # Test için son 2 güncel haberi gönderelim
-        for haber in bildirimler[:2]: 
-            sirket = haber.get('stockCodes', 'GENEL')
-            baslik = haber.get('disclosureIndex', {}).get('title', 'KAP Bildirimi')
-            h_id = haber.get('disclosureIndex', {}).get('id')
-            link = f"https://www.kap.org.tr/tr/Bildirim/{h_id}"
-
-            mesaj = (f"🔔 *KAP HABER AKIŞI AKTİF*\n\n"
-                     f"🏢 *Şirket:* {sirket}\n"
-                     f"📜 *Konu:* {baslik}\n"
-                     f"🔗 [Detaylar için tıklayın]({link})")
-            
-            telegram_gonder(mesaj)
-    except Exception as e:
-        print(f"KAP Hatası: {e}")
+        print(f"Hata: {e}")
 
 if __name__ == "__main__":
-    kap_cek()
+    id_bul()
