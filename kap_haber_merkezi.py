@@ -5,58 +5,56 @@ import pytz
 # --- AYARLAR ---
 TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
 CHAT_ID = "-1003838602845"
-TOPIC_ID = "958"  # KAP Haberleri Konusu (Topic)
+TOPIC_ID = "958" 
 
 def telegram_gonder(mesaj):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    
+    # 1. Deneme: Belirlenen konuya (Topic) gönder
     payload = {
         'chat_id': CHAT_ID,
         'text': mesaj,
         'parse_mode': 'Markdown',
-        'message_thread_id': TOPIC_ID,
-        'disable_web_page_preview': False
+        'message_thread_id': TOPIC_ID
     }
+    
     try:
         res = requests.post(url, json=payload)
         if res.status_code != 200:
-            print(f"Telegram Hatası: {res.text}")
+            print(f"Konuya gönderilemedi, ana gruba deneniyor... Hata: {res.text}")
+            # 2. Deneme: Eğer konu ID hatalıysa direkt ana gruba gönder
+            payload.pop('message_thread_id')
+            res = requests.post(url, json=payload)
+            if res.status_code == 200:
+                print("Mesaj ana gruba başarıyla gönderildi. Topic ID'yi kontrol et!")
+        else:
+            print("Mesaj konuya başarıyla gönderildi.")
     except Exception as e:
-        print(f"Gönderim hatası: {e}")
+        print(f"Sistem Hatası: {e}")
 
 def kap_akisi_taramasi():
     print("KAP verileri çekiliyor...")
     url = "https://www.kap.org.tr/tr/api/disclosures"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
     try:
-        response = requests.get(url, headers=headers, timeout=20)
+        response = requests.get(url, headers=headers, timeout=25)
         bildirimler = response.json()
         
-        tr_tz = pytz.timezone('Europe/Istanbul')
-        
-        # TEST MODU: Zaman filtresini şimdilik kaldırdım. 
-        # Son gelen 5 haberi saati ne olursa olsun gruba atar.
-        for haber in bildirimler[:5]: 
-            tarih_ms = haber.get('publishDate')
-            haber_vakti = datetime.fromtimestamp(tarih_ms / 1000.0, tr_tz).strftime('%H:%M')
-            
+        # Test için son 3 bildirimi gönderiyoruz
+        for haber in bildirimler[:3]: 
             sirket = haber.get('stockCodes', 'GENEL')
             baslik = haber.get('disclosureIndex', {}).get('title', 'KAP Bildirimi')
-            ozet = haber.get('summary', 'Özet bulunmuyor.')
             h_id = haber.get('disclosureIndex', {}).get('id')
             link = f"https://www.kap.org.tr/tr/Bildirim/{h_id}"
 
-            mesaj = (f"🔔 *YENİ KAP BİLDİRİMİ* [{haber_vakti}]\n\n"
+            mesaj = (f"🔔 *KAP TEST MESAJI*\n\n"
                      f"🏢 *Şirket:* {sirket}\n"
                      f"📜 *Konu:* {baslik}\n"
-                     f"📝 *Özet:* {ozet[:300]}...\n\n" # Özet çok uzunsa keser
                      f"🔗 [Bildirimi Aç]({link})")
             
             telegram_gonder(mesaj)
-            print(f"Gönderildi: {sirket}")
-
+            
     except Exception as e:
         print(f"KAP Veri Hatası: {e}")
 
