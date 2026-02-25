@@ -11,6 +11,10 @@ CHAT_ID = "8599240314"
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
+def mesaj_gonder(metin):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    requests.post(url, data={'chat_id': CHAT_ID, 'text': metin, 'parse_mode': 'Markdown'})
+
 def fotograf_gonder(foto_bayt, aciklama):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     files = {'photo': ('graph.png', foto_bayt, 'image/png')}
@@ -23,11 +27,13 @@ def analiz_yap():
         df_sheet.columns = df_sheet.columns.str.strip()
         hisseler = df_sheet['Hisse'].dropna().tolist()
         
+        found_count = 0
+        mesaj_gonder(f"🚀 Tarama başladı... {len(hisseler)} hisse kontrol ediliyor.")
+
         for hisse in hisseler:
             df = yf.download(hisse, period="3mo", interval="4h", progress=False)
             if df.empty or len(df) < 90: continue
 
-            # EMA Hesaplama (pandas_ta yerine doğrudan pandas ile)
             df['EMA55'] = df['Close'].ewm(span=55, adjust=False).mean()
             df['EMA89'] = df['Close'].ewm(span=89, adjust=False).mean()
             
@@ -35,8 +41,10 @@ def analiz_yap():
             e55 = float(df['EMA55'].iloc[-1])
             e89 = float(df['EMA89'].iloc[-1])
             
-            limit = 0.015
+            # %1.5 limit (Test için bunu 0.10 yani %10 yapabilirsin)
+            limit = 0.015 
             if (abs(son_fiyat - e55) / e55 <= limit) or (abs(son_fiyat - e89) / e89 <= limit):
+                found_count += 1
                 apds = [
                     mpf.make_addplot(df['EMA55'].tail(60), color='blue', width=1.5),
                     mpf.make_addplot(df['EMA89'].tail(60), color='red', width=1.5)
@@ -51,16 +59,13 @@ def analiz_yap():
                          savefig=dict(fname=buf, format='png', bbox_inches='tight'))
                 buf.seek(0)
 
-                mesaj = (f"🕵️‍♂️ *ÖZEL SİNYAL: {hisse}*\n\n"
-                         f"💰 *Fiyat:* {son_fiyat:.2f} TL\n"
-                         f"📍 *Bölge:* Destek Yakınında (4H)\n"
-                         f"──────────────────\n"
-                         f"🔹 EMA 55: {e55:.2f}\n"
-                         f"🔸 EMA 89: {e89:.2f}")
-                
+                mesaj = (f"🕵️‍♂️ *SİNYAL: {hisse}*\n💰 Fiyat: {son_fiyat:.2f}\n🔹 EMA55: {e55:.2f}\n🔸 EMA89: {e89:.2f}")
                 fotograf_gonder(buf, mesaj)
+
+        mesaj_gonder(f"✅ Tarama tamamlandı. {found_count} adet uygun hisse bulundu.")
+
     except Exception as e:
-        print(f"Hata: {e}")
+        mesaj_gonder(f"❌ HATA OLUŞTU: {str(e)}")
 
 if __name__ == "__main__":
     analiz_yap()
