@@ -59,19 +59,33 @@ def analiz_yap():
 
                 df['EMA55'] = df['Close'].ewm(span=55, adjust=False).mean()
                 df['EMA89'] = df['Close'].ewm(span=89, adjust=False).mean()
+                df['HacimOrt20'] = df['Volume'].rolling(window=20).mean()
 
                 son_fiyat = float(df['Close'].iloc[-1])
-                e89 = float(df['EMA89'].iloc[-1])
-                e55 = float(df['EMA55'].iloc[-1])
+                e89       = float(df['EMA89'].iloc[-1])
+                e55       = float(df['EMA55'].iloc[-1])
+                son_hacim = float(df['Volume'].iloc[-1])
+                ort_hacim = float(df['HacimOrt20'].iloc[-1])
 
-                if e89 == 0:
+                if e89 == 0 or ort_hacim == 0:
                     continue
 
-                mesafe = abs(son_fiyat - e89) / e89
-                limit = 0.03  # %3 tolerans
+                mesafe       = abs(son_fiyat - e89) / e89
+                hacim_carpan = son_hacim / ort_hacim
 
-                # Fiyat EMA89 üzerinde, EMA55 > EMA89 (trend yukarı) ve yakın
-                if mesafe <= limit and son_fiyat >= e89 and e55 > e89:
+                limit            = 0.03   # EMA89'a max %3 uzaklık
+                hacim_min_carpan = 1.5    # Ortalama hacmin en az 1.5 katı
+
+                # FİLTRELER:
+                # 1. Fiyat EMA89 üzerinde
+                # 2. EMA55 > EMA89 (trend yukarı)
+                # 3. EMA89'a %3'ten yakın
+                # 4. Son hacim, 20 mumluk ortalamanın 1.5 katından fazla
+                if (mesafe <= limit and
+                    son_fiyat >= e89 and
+                    e55 > e89 and
+                    hacim_carpan >= hacim_min_carpan):
+
                     found_count += 1
 
                     apds = [
@@ -81,7 +95,7 @@ def analiz_yap():
 
                     buf = io.BytesIO()
                     mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
-                    s = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
+                    s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
 
                     mpf.plot(df.tail(80), type='candle', style=s, addplot=apds,
                              title=f"\n{hisse} - EMA 89 Desteği",
@@ -93,7 +107,8 @@ def analiz_yap():
                              f"💰 *Fiyat:* {son_fiyat:.2f}\n"
                              f"🟣 *EMA 89:* {e89:.2f}\n"
                              f"🟠 *EMA 55:* {e55:.2f}\n"
-                             f"📉 *Mesafe:* %{mesafe*100:.2f}")
+                             f"📉 *Mesafe:* %{mesafe*100:.2f}\n"
+                             f"📊 *Hacim:* Ort. x{hacim_carpan:.1f}")
 
                     fotograf_gonder(buf, mesaj)
 
