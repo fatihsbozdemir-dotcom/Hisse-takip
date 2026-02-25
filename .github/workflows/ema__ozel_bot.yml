@@ -1,0 +1,24 @@
+name: EMA 4H Gunluk Tarama
+
+on:
+  workflow_dispatch: # Elle başlatma butonu
+  schedule:
+    - cron: '0 10 * * *' # Her gün Türkiye saati ile 13:00 (UTC 10:00)
+
+jobs:
+  run-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu Cek
+        uses: actions/checkout@v3
+
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Paketleri Kur
+        run: pip install pandas yfinance pandas_ta mplfinance requests
+
+      - name: Taramayi Calistir
+        run: python ema_ozel_bot.py
