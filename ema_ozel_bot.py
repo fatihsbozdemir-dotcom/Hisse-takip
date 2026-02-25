@@ -20,18 +20,12 @@ def fotograf_gonder(foto_bayt, aciklama):
     requests.post(url, files=files, data=data)
 
 def veri_cek(hisse):
-    """4H veriyi 1H'den türet, başarısız olursa günlük kullan."""
     try:
         df = yf.download(hisse, period="60d", interval="1h", progress=False, auto_adjust=True)
-        
-        # MultiIndex düzeltmesi
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-        
         if df.empty or len(df) < 4:
             raise ValueError("Yetersiz 1H veri")
-        
-        # 1H → 4H dönüşümü (resample)
         df.index = pd.to_datetime(df.index)
         df_4h = df.resample('4h').agg({
             'Open': 'first',
@@ -40,11 +34,8 @@ def veri_cek(hisse):
             'Close': 'last',
             'Volume': 'sum'
         }).dropna()
-        
         return df_4h
-    
     except Exception:
-        # Fallback: günlük veri
         df = yf.download(hisse, period="1y", interval="1d", progress=False, auto_adjust=True)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -62,28 +53,25 @@ def analiz_yap():
         for hisse in hisseler:
             try:
                 df = veri_cek(hisse)
-                
+
                 if df is None or len(df) < 90:
                     continue
 
-                # EMA Hesaplamaları
                 df['EMA55'] = df['Close'].ewm(span=55, adjust=False).mean()
                 df['EMA89'] = df['Close'].ewm(span=89, adjust=False).mean()
 
                 son_fiyat = float(df['Close'].iloc[-1])
                 e89 = float(df['EMA89'].iloc[-1])
+                e55 = float(df['EMA55'].iloc[-1])
 
                 if e89 == 0:
                     continue
 
                 mesafe = abs(son_fiyat - e89) / e89
-                
-                limit = 0.03  # %1.5 → %3'e genişletildi
+                limit = 0.03  # %3 tolerans
 
-                # Debug: her hisseyi logla (sorun tespiti için)
-                print(f"{hisse} | Fiyat: {son_fiyat:.2f} | EMA89: {e89:.2f} | Mesafe: %{mesafe*100:.2f}")
-
-                if mesafe <= limit:
+                # Fiyat EMA89 üzerinde, EMA55 > EMA89 (trend yukarı) ve yakın
+                if mesafe <= limit and son_fiyat >= e89 and e55 > e89:
                     found_count += 1
 
                     apds = [
@@ -104,6 +92,7 @@ def analiz_yap():
                              f"🏢 *Hisse:* {hisse}\n"
                              f"💰 *Fiyat:* {son_fiyat:.2f}\n"
                              f"🟣 *EMA 89:* {e89:.2f}\n"
+                             f"🟠 *EMA 55:* {e55:.2f}\n"
                              f"📉 *Mesafe:* %{mesafe*100:.2f}")
 
                     fotograf_gonder(buf, mesaj)
