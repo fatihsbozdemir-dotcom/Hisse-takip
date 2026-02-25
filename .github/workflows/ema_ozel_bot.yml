@@ -15,13 +15,10 @@ jobs:
       - name: Python Kur
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10' # Sürümü 3.10'a yükselttik
+          python-version: '3.11' # Loglardaki gereksinimi karşılamak için yükselttik
 
       - name: Paketleri Kur
-        run: |
-          python -m pip install --upgrade pip
-          pip install pandas yfinance requests mplfinance
-          pip install pandas_ta --user # Kurulum hatasını önlemek için --user eklendi
+        run: pip install pandas yfinance requests mplfinance
 
       - name: Taramayi Calistir
         run: python ema_ozel_bot.py
