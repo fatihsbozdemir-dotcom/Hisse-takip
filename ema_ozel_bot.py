@@ -28,56 +28,59 @@ def analiz_yap():
         hisseler = df_sheet['Hisse'].dropna().tolist()
         
         found_count = 0
-        mesaj_gonder(f"🚀 Tarama başladı... {len(hisseler)} hisse kontrol ediliyor.")
+        mesaj_gonder(f"🔍 *4H EMA 89 Taraması Başladı...* ({len(hisseler)} hisse)")
 
         for hisse in hisseler:
             try:
-                # 4 Saatlik veriyi çek
-                df = yf.download(hisse, period="3mo", interval="4h", progress=False)
+                # Veriyi çek (Hata payını azaltmak için periyodu uzattık)
+                df = yf.download(hisse, period="6mo", interval="4h", progress=False)
                 if df.empty or len(df) < 90: continue
 
-                # EMA Hesaplama (Veriyi temizleyerek)
+                # EMA Hesaplamaları
                 df['EMA55'] = df['Close'].ewm(span=55, adjust=False).mean()
                 df['EMA89'] = df['Close'].ewm(span=89, adjust=False).mean()
                 
-                # Değerleri güvenli bir şekilde çek (float zorlaması ile)
+                # Değerleri seriden sayıya (float) güvenli dönüştürme
                 son_fiyat = float(df['Close'].iloc[-1])
-                e55 = float(df['EMA55'].iloc[-1])
                 e89 = float(df['EMA89'].iloc[-1])
                 
-                # Limit kontrolü (%1.5 mesafe)
+                # KRİTER: Fiyat EMA 89'a %1.5 yakın mı? 
+                # (Eğer yine bulamazsa bu 0.015 değerini 0.03 yaparak alanı genişletebilirsin)
                 limit = 0.015 
-                yakin_55 = abs(son_fiyat - e55) / e55 <= limit
-                yakin_89 = abs(son_fiyat - e89) / e89 <= limit
+                mesafe = abs(son_fiyat - e89) / e89
 
-                if yakin_55 or yakin_89:
+                if mesafe <= limit:
                     found_count += 1
+                    
+                    # GRAFİK AYARI: EMA 89'u tam istediğin gibi MOR yapıyoruz
                     apds = [
-                        mpf.make_addplot(df['EMA55'].tail(60), color='blue', width=1.5),
-                        mpf.make_addplot(df['EMA89'].tail(60), color='red', width=1.5)
+                        mpf.make_addplot(df['EMA89'].tail(80), color='purple', width=2.0)
                     ]
                     
                     buf = io.BytesIO()
                     mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
                     s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
                     
-                    mpf.plot(df.tail(60), type='candle', style=s, addplot=apds,
-                             title=f"\n{hisse} - 4H EMA Stratejisi",
+                    mpf.plot(df.tail(80), type='candle', style=s, addplot=apds,
+                             title=f"\n{hisse} - EMA 89 (Mor Çizgi) Desteği",
                              savefig=dict(fname=buf, format='png', bbox_inches='tight'))
                     buf.seek(0)
 
-                    bolge = "🔵 EMA 55" if yakin_55 else "🔴 EMA 89"
-                    mesaj = (f"🕵️‍♂️ *SİNYAL: {hisse}*\n💰 Fiyat: {son_fiyat:.2f}\n📍 Bölge: {bolge}\n🔹 EMA55: {e55:.2f}\n🔸 EMA89: {e89:.2f}")
+                    mesaj = (f"🎯 *EMA 89 DESTEK SİNYALİ*\n\n"
+                             f"🏢 *Hisse:* {hisse}\n"
+                             f"💰 *Fiyat:* {son_fiyat:.2f}\n"
+                             f"🟣 *EMA 89:* {e89:.2f}\n"
+                             f"📉 *Mesafe:* %{mesafe*100:.2f}")
+                    
                     fotograf_gonder(buf, mesaj)
 
-            except Exception as e_inner:
-                print(f"{hisse} taranırken hata: {e_inner}")
-                continue # Bir hisse hatalıysa diğerine geç
+            except Exception:
+                continue 
 
-        mesaj_gonder(f"✅ Tarama tamamlandı. {found_count} adet uygun hisse bulundu.")
+        mesaj_gonder(f"✅ Tarama bitti. {found_count} uygun hisse bulundu.")
 
     except Exception as e:
-        mesaj_gonder(f"❌ SİSTEM HATASI: {str(e)}")
+        mesaj_gonder(f"❌ Sistem Hatası: {str(e)}")
 
 if __name__ == "__main__":
     analiz_yap()
