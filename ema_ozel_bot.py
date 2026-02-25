@@ -31,41 +31,53 @@ def analiz_yap():
         mesaj_gonder(f"🚀 Tarama başladı... {len(hisseler)} hisse kontrol ediliyor.")
 
         for hisse in hisseler:
-            df = yf.download(hisse, period="3mo", interval="4h", progress=False)
-            if df.empty or len(df) < 90: continue
+            try:
+                # 4 Saatlik veriyi çek
+                df = yf.download(hisse, period="3mo", interval="4h", progress=False)
+                if df.empty or len(df) < 90: continue
 
-            df['EMA55'] = df['Close'].ewm(span=55, adjust=False).mean()
-            df['EMA89'] = df['Close'].ewm(span=89, adjust=False).mean()
-            
-            son_fiyat = float(df['Close'].iloc[-1])
-            e55 = float(df['EMA55'].iloc[-1])
-            e89 = float(df['EMA89'].iloc[-1])
-            
-            # %1.5 limit (Test için bunu 0.10 yani %10 yapabilirsin)
-            limit = 0.015 
-            if (abs(son_fiyat - e55) / e55 <= limit) or (abs(son_fiyat - e89) / e89 <= limit):
-                found_count += 1
-                apds = [
-                    mpf.make_addplot(df['EMA55'].tail(60), color='blue', width=1.5),
-                    mpf.make_addplot(df['EMA89'].tail(60), color='red', width=1.5)
-                ]
+                # EMA Hesaplama (Veriyi temizleyerek)
+                df['EMA55'] = df['Close'].ewm(span=55, adjust=False).mean()
+                df['EMA89'] = df['Close'].ewm(span=89, adjust=False).mean()
                 
-                buf = io.BytesIO()
-                mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
-                s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
+                # Değerleri güvenli bir şekilde çek (float zorlaması ile)
+                son_fiyat = float(df['Close'].iloc[-1])
+                e55 = float(df['EMA55'].iloc[-1])
+                e89 = float(df['EMA89'].iloc[-1])
                 
-                mpf.plot(df.tail(60), type='candle', style=s, addplot=apds,
-                         title=f"\n{hisse} - 4H EMA Stratejisi",
-                         savefig=dict(fname=buf, format='png', bbox_inches='tight'))
-                buf.seek(0)
+                # Limit kontrolü (%1.5 mesafe)
+                limit = 0.015 
+                yakin_55 = abs(son_fiyat - e55) / e55 <= limit
+                yakin_89 = abs(son_fiyat - e89) / e89 <= limit
 
-                mesaj = (f"🕵️‍♂️ *SİNYAL: {hisse}*\n💰 Fiyat: {son_fiyat:.2f}\n🔹 EMA55: {e55:.2f}\n🔸 EMA89: {e89:.2f}")
-                fotograf_gonder(buf, mesaj)
+                if yakin_55 or yakin_89:
+                    found_count += 1
+                    apds = [
+                        mpf.make_addplot(df['EMA55'].tail(60), color='blue', width=1.5),
+                        mpf.make_addplot(df['EMA89'].tail(60), color='red', width=1.5)
+                    ]
+                    
+                    buf = io.BytesIO()
+                    mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
+                    s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
+                    
+                    mpf.plot(df.tail(60), type='candle', style=s, addplot=apds,
+                             title=f"\n{hisse} - 4H EMA Stratejisi",
+                             savefig=dict(fname=buf, format='png', bbox_inches='tight'))
+                    buf.seek(0)
+
+                    bolge = "🔵 EMA 55" if yakin_55 else "🔴 EMA 89"
+                    mesaj = (f"🕵️‍♂️ *SİNYAL: {hisse}*\n💰 Fiyat: {son_fiyat:.2f}\n📍 Bölge: {bolge}\n🔹 EMA55: {e55:.2f}\n🔸 EMA89: {e89:.2f}")
+                    fotograf_gonder(buf, mesaj)
+
+            except Exception as e_inner:
+                print(f"{hisse} taranırken hata: {e_inner}")
+                continue # Bir hisse hatalıysa diğerine geç
 
         mesaj_gonder(f"✅ Tarama tamamlandı. {found_count} adet uygun hisse bulundu.")
 
     except Exception as e:
-        mesaj_gonder(f"❌ HATA OLUŞTU: {str(e)}")
+        mesaj_gonder(f"❌ SİSTEM HATASI: {str(e)}")
 
 if __name__ == "__main__":
     analiz_yap()
