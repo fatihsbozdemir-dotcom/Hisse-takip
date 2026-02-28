@@ -12,7 +12,7 @@ SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 # KRİTER: Kaç gün üst üste düşüş arıyoruz? (Test için 3 idealdir)
-DUSUS_GUN_SAYISI = 3 
+DUSUS_GUN_SAYISI = 5 
 # ===========================================================
 
 def mesaj_gonder(metin):
