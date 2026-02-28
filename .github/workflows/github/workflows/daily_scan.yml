@@ -1,0 +1,25 @@
+name: Gunluk Dusen Hisse Taramasi
+
+on:
+  workflow_dispatch: # Elle başlatma butonu
+  schedule:
+    - cron: '0 10 * * *' # Her gün TSİ 13:00 (UTC 10:00)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu Cek
+        uses: actions/checkout@v3
+
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Paketleri Kur
+        run: |
+          pip install pandas yfinance requests mplfinance
+
+      - name: Botu Calistir
+        run: python dusenler_ozel_bot.py
