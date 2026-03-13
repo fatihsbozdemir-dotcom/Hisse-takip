@@ -1,0 +1,28 @@
+name: Günlük Borsa Taraması
+
+on:
+  schedule:
+    # TSİ 18:30'da çalışır (UTC 15:30) - Hafta içi her gün
+    - cron: '30 15 * * 1-5'
+  workflow_dispatch: # İstediğin zaman manuel olarak da başlatabilmen için
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Depoyu Kontrol Et
+        uses: actions/checkout@v3
+
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Kütüphaneleri Yükle
+        run: |
+          python -m pip install --upgrade pip
+          pip install yfinance pandas matplotlib requests lxml
+
+      - name: Tarama Kodunu Çalıştır
+        run: python Yatayolursa.py # Python dosyanın adının main.py olduğunu varsayıyorum
