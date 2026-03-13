@@ -5,7 +5,7 @@ import requests
 import os
 import numpy as np
 
-TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
+TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
 CHAT_ID = "8599240314"
 
 def t_mesaj(mesaj):
