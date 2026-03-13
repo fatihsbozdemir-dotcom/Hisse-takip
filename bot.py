@@ -16,45 +16,36 @@ def analiz_et():
     for hisse in hisseler:
         try:
             t_name = f"{hisse}.IS"
+            # 6 aylık veri, günlük periyot
             df = yf.Ticker(t_name).history(period="6mo", interval="1d")
             if len(df) < 20: continue
 
-            # --- HESAPLAMALAR ---
-            # Bollinger (20, 2)
-            sma = df['Close'].rolling(20).mean()
-            std = df['Close'].rolling(20).std()
-            upper = sma + (2 * std)
-            lower = sma - (2 * std)
-            
-            # Sıkışma oranı (Bandwidth)
-            bandwidth = ((upper - lower) / sma) * 100
-            is_sikisma = bandwidth.iloc[-1] < 5.0 # %5 altı sıkışmadır
-            
-            # Arz Bölgesi (Zirveye %2 yakınlık)
+            # --- SAF FİYAT ANALİZİ ---
+            guncel_fiyat = df['Close'].iloc[-1]
             arz_zirve = df['High'].max()
-            fiyat = df['Close'].iloc[-1]
-            mesafe = ((arz_zirve - fiyat) / arz_zirve) * 100
-            is_arz = 0 <= mesafe <= 2.0
+            
+            # 1. Arz Bölgesi (Zirveye %2 yakınlık)
+            mesafe = ((arz_zirve - guncel_fiyat) / arz_zirve) * 100
+            in_arz = 0 <= mesafe <= 2.0
+            
+            # 2. Yatay Kanal (Son 20 günlük en yüksek - en düşük farkı)
+            son_20 = df.tail(20)
+            kanal_genisligi = ((son_20['High'].max() - son_20['Low'].min()) / son_20['Low'].min()) * 100
+            is_yatay = 2.0 <= kanal_genisligi <= 8.0 # %8'e kadar olan sıkışmaları al
 
-            # --- FİLTRE VE BİLDİRİM ---
-            if is_sikisma or is_arz:
+            # --- SADECE KRİTERLERE UYUYORSA GÖNDER ---
+            if in_arz or is_yatay:
                 buf = io.BytesIO()
                 
-                # Grafik çizimi
-                apds = [
-                    mpf.make_addplot(upper, color='gray', linestyle='--'),
-                    mpf.make_addplot(lower, color='gray', linestyle='--'),
-                    mpf.make_addplot(sma, color='blue')
-                ]
-                
-                mpf.plot(df.tail(60), type='candle', addplot=apds, volume=True, 
-                         title=f"\n{hisse} - Bollinger/Arz Analizi",
+                # Grafik: İndikatörsüz, sadece mumlar
+                mpf.plot(df.tail(40), type='candle', volume=True, 
+                         title=f"\n{hisse} - Arz/Yatay Analizi",
                          savefig=dict(fname=buf, format='png', bbox_inches='tight'))
                 buf.seek(0)
                 
-                msg = f"📢 *Analiz Sonucu*\n📊 *Hisse:* {hisse}\n💰 *Fiyat:* {fiyat:.2f} TL"
-                if is_sikisma: msg += f"\n🟨 *Sıkışma:* %{bandwidth.iloc[-1]:.2f} (Daralma Var)"
-                if is_arz: msg += f"\n🟥 *Arz Bölgesi:* Zirveye %{mesafe:.2f} uzaklıkta"
+                msg = f"📢 *Teknik Analiz*\n📊 *Hisse:* {hisse}\n💰 *Fiyat:* {guncel_fiyat:.2f} TL"
+                if in_arz: msg += f"\n🟥 *Arz Bölgesi:* Zirveye %{mesafe:.2f} yakın"
+                if is_yatay: msg += f"\n🟨 *Yatay Kanal:* Genişlik %{kanal_genisligi:.2f}"
                 
                 requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", 
                               files={'photo': buf}, data={'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'})
