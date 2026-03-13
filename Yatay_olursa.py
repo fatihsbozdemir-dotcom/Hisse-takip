@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 import io
 import time
-import matplotlib.pyplot as plt
 
 TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
 CHAT_ID = "8599240314"
@@ -17,33 +16,36 @@ def analiz_et():
         
         sonuclar = []
         
-        for hisse in hisseler[:30]: # Test için ilk 30 hisseyi tara
+        for hisse in hisseler[:30]: # Test için 30'lu devam edelim
             try:
-                df_h = yf.download(hisse, period="1mo", interval="1d").tail(20)
+                # Veriyi çek ve sadece 'Close' fiyatlarını al
+                df_h = yf.download(hisse, period="1mo", interval="1d")
                 if len(df_h) < 20: continue
                 
-                # Bollinger genişliği (Yataylık göstergesi)
-                sma = df_h['Close'].rolling(window=20).mean()
-                std = df_h['Close'].rolling(window=20).std()
+                fiyatlar = df_h['Close'].values # Etiketleri sildik, sadece sayıları aldık
+                
+                # Bollinger Bant genişliğini ham sayılarla hesapla
+                # Pandas Series yerine numpy dizisi (values) kullandığımız için hata vermeyecek
+                seri = pd.Series(fiyatlar)
+                sma = seri.rolling(window=20).mean()
+                std = seri.rolling(window=20).std()
                 bant_genisligi = (std / sma).iloc[-1]
                 
                 sonuclar.append((hisse, bant_genisligi))
-            except: continue
+            except Exception: continue
         
-        # En düşük bant genişliğine sahip (en yatay) ilk 3 hisseyi bul
+        # Sırala ve Telegram'a gönder
         sonuclar.sort(key=lambda x: x[1])
-        en_iyiler = sonuclar[:3]
-        
-        mesaj = "📊 Güncel En İyi 3 Yatay Hisse:\n"
-        for h, b in en_iyiler:
-            mesaj += f"{h}: Bant Genişliği {b:.4f}\n"
+        mesaj = "📊 En Yatay 3 Hisse (Düşük Bant Genişliği):\n"
+        for h, b in sonuclar[:3]:
+            mesaj += f"{h}: {b:.4f}\n"
             
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                       data={'chat_id': CHAT_ID, 'text': mesaj})
                       
     except Exception as e:
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
-                      data={'chat_id': CHAT_ID, 'text': f"Hata: {str(e)}"})
+                      data={'chat_id': CHAT_ID, 'text': f"Kritik Hata: {str(e)}"})
 
 if __name__ == "__main__":
     analiz_et()
