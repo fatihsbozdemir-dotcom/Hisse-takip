@@ -1,71 +1,91 @@
-import yfinance as yf
+İmport yfinance as yf
 import pandas as pd
-import numpy as np
-import mplfinance as mpf
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import io
 import requests
+import mplfinance as mpf
+import io
+import datetime
 
 # --- AYARLAR ---
 TELEGRAM_TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
-CHAT_ID = "-1003838602845"
-SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/export?format=csv"
+CHAT_ID = "-1003838602845" 
+SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
-# ---------------------------------------------------------------
-# PIVOT DESTEK / D\u0130REN\u00c7 BULMA
-# Grafikteki gibi: fiyat\u0131n birden fazla kez d\u00f6nd\u00fc\u011f\u00fc seviyeleri bul
-# ---------------------------------------------------------------
-def pivot_noktalari_bul(df, pencere=5, min_dokunma=2, tolerans_pct=0.015):
-    """
-    Ger\u00e7ek pivot high/low noktalar\u0131n\u0131 bulur.
-    - pencere: ka\u00e7 mumdaki en y\u00fcksek/d\u00fc\u015f\u00fck oldu\u011funu kontrol eder
-    - min_dokunma: bir seviyenin ge\u00e7erli say\u0131lmas\u0131 i\u00e7in ka\u00e7 kez test edilmeli
-    - tolerans_pct: iki seviyenin ayn\u0131 b\u00f6lge say\u0131lmas\u0131 i\u00e7in yak\u0131nl\u0131k y\u00fczdesi
-    """
-    highs = df['High'].values
-    lows = df['Low'].values
-    closes = df['Close'].values
+def analiz_et():
+    try:
+        simdi = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                      json={'chat_id': CHAT_ID, 'text': f'🤖 *{simdi.strftime("%H:%M")}* %2-%10 Arası Yatay Tarama Başladı...'})
 
-    # Pivot tepe ve dipleri bul
-    pivot_tepeler = []
-    pivot_dipler = []
+        df_sheet = pd.read_csv(SHEET_URL)
+        df_sheet.columns = [c.strip() for c in df_sheet.columns]
+        
+        bulunan_sayi = 0
 
-    for i in range(pencere, len(df) - pencere):
-        # Pivot tepe: penceredeki en y\u00fcksek nokta
-        if highs[i] == max(highs[i - pencere:i + pencere + 1]):
-            pivot_tepeler.append(highs[i])
-        # Pivot dip: penceredeki en d\u00fc\u015f\u00fck nokta
-        if lows[i] == min(lows[i - pencere:i + pencere + 1]):
-            pivot_dipler.append(lows[i])
+        for index, row in df_sheet.iterrows():
+            hisse = str(row.get('Hisse', '')).strip()
+            if not hisse or hisse == 'nan': continue
+            
+            hedef = row.get('Hedef_Fiyat', 0)
+            try: hedef = float(hedef)
+            except: hedef = 0
+            
+            t_name = hisse if hisse.endswith(".IS") else f"{hisse}.IS"
+            # Son 10 haftalık veri çekelim ki grafikte biraz öncesini görelim
+            hist = yf.Ticker(t_name).history(period="6mo", interval="1wk")
+            
+            if hist.empty or len(hist) < 5: continue
+            
+            # --- 5 HAFTALIK YATAY KONTROLÜ ---
+            son_5_hafta = hist.tail(5)
+            en_yuksek = son_5_hafta['High'].max()
+            en_dusuk = son_5_hafta['Low'].min()
+            guncel_fiyat = son_5_hafta['Close'].iloc[-1]
+            
+            # Kanal genişliği yüzdesi
+            kanal_genisligi = ((en_yuksek - en_dusuk) / en_dusuk) * 100
+            
+            # KRİTER: %2 ile %10 arasında mı?
+            is_yatay = 2.0 <= kanal_genisligi <= 10.0
+            
+            bildir = False
+            tip = ""
+            if hedef > 0:
+                bildir = True
+                tip = "🎯 HEDEF TAKİBİ"
+            elif is_yatay:
+                bildir = True
+                tip = "🟨 %2-%10 YATAY SIKIŞMA"
 
-    # Yak\u0131n seviyeleri birle\u015ftir (k\u00fcmeleme)
-    def kumelere_ayir(levels, tolerans_pct):
-        if not levels:
-            return []
-        levels = sorted(levels)
-        kumeler = []
-        mevcut_kume = [levels[0]]
+            if bildir:
+                bulunan_sayi += 1
+                mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
+                s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
+                
+                buf = io.BytesIO()
+                mpf.plot(hist.tail(30), type='candle', style=s, volume=True, 
+                         title=f"\n{hisse} (Haftalik)", 
+                         ylabel='Fiyat (TL)',
+                         savefig=dict(fname=buf, format='png', bbox_inches='tight'))
+                buf.seek(0)
+                
+                msg = f"📢 *{tip}*\n📊 *Hisse:* {hisse}\n💰 *Fiyat:* {guncel_fiyat:.2f} TL"
+                if hedef > 0: 
+                    msg += f"\n🎯 *Hedef:* {hedef:.2f} TL"
+                else:
+                    msg += f"\n📏 *5 Haftalık Bant:* %{kanal_genisligi:.2f}"
+                    msg += f"\n🔝 *Zirve:* {en_yuksek:.2f} / ⬇️ *Dip:* {en_dusuk:.2f}"
+                
+                requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", 
+                              files={'photo': buf}, data={'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'})
 
-        for level in levels[1:]:
-            if (level - mevcut_kume[-1]) / mevcut_kume[-1] < tolerans_pct:
-                mevcut_kume.append(level)
-            else:
-                kumeler.append(np.mean(mevcut_kume))
-                mevcut_kume = [level]
-        kumeler.append(np.mean(mevcut_kume))
-        return kumeler
+        if bulunan_sayi == 0:
+             requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                      json={'chat_id': CHAT_ID, 'text': '✅ Tarama bitti. Bu bant aralığında hisse bulunamadı.'})
 
-    # K\u00fcmeleme ve dokunma say\u0131s\u0131 filtresi
-    def guclu_seviyeler_bul(pivot_list, tum_fiyatlar, tolerans_pct, min_dokunma):
-        kumeler = kumelere_ayir(pivot_list, tolerans_pct)
-        guclu = []
-        for seviye in kumeler:
-            # Bu seviyeye ka\u00e7 kez dokunulmu\u015f?
-            dokunma = sum(1 for f in tum_fiyatlar if abs(f - seviye) / seviye < tolerans_pct)
-            if dokunma >= min_dokunma:
-                guclu.append((seviye, dokunma))
-        # G\u00fcce g\u00f6re s\u0131rala
-        return sorted(guclu, key=lambda x: x[1], reverse=True)
+    except Exception as e:
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                      json={'chat_id': CHAT_ID, 'text': f'❌ Hata: {str(e)}'})
 
-    tum_fiyatlar = list(highs) + list(lows)
+if __name__ == "__main__":
+    analiz_et_ve_bildir 
