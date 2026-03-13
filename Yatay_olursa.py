@@ -7,38 +7,58 @@ import time
 
 # --- AYARLAR ---
 TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
-CHAT_ID = "1003838602845" # Eksi işareti kaldırıldı, özel mesaja dönüştü
+CHAT_ID = "8599240314"
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
-ARALIK_YUZDE = 3.5 # Kriteri test etmek için önce 20 yapabilirsin
+ARALIK_YUZDE = 3.5
 
-def get_hisse_listesi():
-    headers = {'User-Agent': 'Mozilla/5.0'}
+def analiz_et():
     try:
-        response = requests.get(SHEET_URL, headers=headers)
-        if response.status_code != 200:
-            print(f"❌ Sheets bağlantı hatası: {response.status_code}")
-            return []
-            
+        # Google Sheets'ten veriyi çek
+        response = requests.get(SHEET_URL)
         df = pd.read_csv(io.StringIO(response.text))
         
-        # A Sütununu alıyoruz
-        ham_liste = df.iloc[:, 0].tolist() 
+        # A sütunundaki hisseleri al
+        hisseler = [str(x).strip().upper() + ".IS" for x in df.iloc[:, 0].dropna() if str(x).strip()]
+        hisseler = list(set(hisseler)) # Tekrar edenleri temizle
         
-        hisseler = []
-        for h in ham_liste:
-            sembol = str(h).strip().upper()
-            if sembol and sembol != "NAN":
-                if not sembol.endswith(".IS"):
-                    sembol += ".IS"
-                hisseler.append(sembol)
-        return list(set(hisseler))
-    except Exception as e:
-        print(f"❌ Liste çekme hatası: {e}")
-        return []
+        print(f"✅ {len(hisseler)} hisse bulundu, tarama başlıyor...")
 
-def send_telegram(mesaj, image_data=None):
-    url = f"https://api.telegram.org/bot{TOKEN}/"
-    try:
-        if image_data:
-            files = {'photo': ('grafik.png', image
+        for hisse in hisseler:
+            try:
+                # 5 iş günü için son 7 günlük veri
+                data = yf.download(hisse, period="7d", interval="1d").tail(5)
+                if len(data) < 5: continue
+                
+                # Marj hesabı
+                marj = ((data['High'].max() - data['Low'].min()) / data['Low'].min()) * 100
+                
+                if marj <= ARALIK_YUZDE:
+                    # Grafik oluştur
+                    plt.figure(figsize=(6, 4))
+                    plt.plot(data.index.strftime('%d-%m'), data['Close'], marker='o', color='teal', linewidth=2)
+                    plt.title(f"{hisse} - Sıkışma: %{marj:.2f}")
+                    plt.grid(True)
+                    
+                    # Grafiği hafızaya kaydet
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format='png')
+                    buf.seek(0)
+                    plt.close()
+                    
+                    # Telegram'a gönder
+                    mesaj = f"🎯 *Hisse:* `{hisse}`\n📊 *Dar Bant Marjı:* %{marj:.2f}\n✅ Sıkışma tespit edildi!"
+                    files = {'photo': ('grafik.png', buf, 'image/png')}
+                    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
+                                  data={'chat_id': CHAT_ID, 'caption': mesaj, 'parse_mode': 'Markdown'}, 
+                                  files=files)
+                    
+                    time.sleep(2) # Telegram sınırına takılmamak için
+            except Exception as e:
+                print(f"⚠️ {hisse} analiz edilemedi: {e}")
+                
+    except Exception as e:
+        print(f"❌ Google Sheets hatası: {e}")
+
+if __name__ == "__main__":
+    analiz_et()
