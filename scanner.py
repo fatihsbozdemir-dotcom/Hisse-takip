@@ -211,15 +211,37 @@ def grafik_olustur(df, hisse, guclu_tepeler, guclu_dipler, sinyal_tipi, sinyal_s
 # ---------------------------------------------------------------
 # ANA FONKSİYON
 # ---------------------------------------------------------------
+def telegram_mesaj_gonder(metin):
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            data={'chat_id': CHAT_ID, 'text': metin, 'parse_mode': 'Markdown'},
+            timeout=10
+        )
+        print(f"  📨 Telegram yanıt: {r.status_code} | {r.text[:300]}")
+        return r.status_code == 200
+    except Exception as e:
+        print(f"  ❌ Telegram hata: {e}")
+        return False
+
+
 def analiz_et():
     print("📊 Hisse taraması başlıyor...")
+
+    # --- BAĞLANTI TESTİ ---
+    print("🔌 Telegram bağlantısı test ediliyor...")
+    ok = telegram_mesaj_gonder("🤖 *Hisse Tarama Botu başladı*\nHisseler taranıyor...")
+    if not ok:
+        print("❌ TELEGRAM BAĞLANTISI BAŞARISIZ!")
 
     try:
         df_sheet = pd.read_csv(SHEET_URL)
         hisseler = df_sheet['Hisse'].dropna().unique()
         print(f"✅ {len(hisseler)} hisse taranacak: {list(hisseler)}")
+        telegram_mesaj_gonder(f"📋 *{len(hisseler)} hisse taranıyor:*\n`{', '.join([str(h) for h in list(hisseler)[:20]])}`")
     except Exception as e:
         print(f"❌ Google Sheets okunamadı: {e}")
+        telegram_mesaj_gonder(f"❌ Google Sheets okunamadı:\n`{str(e)}`")
         return
 
     bulunan = 0
@@ -311,15 +333,12 @@ def analiz_et():
             print(f"    ❌ {hisse} hatası: {e}")
             continue
 
-    print(f"\n✅ Tarama tamamlandı. {bulunan} sinyal bulundu.")
-
+    ozet = f"\n✅ Tarama tamamlandı. {bulunan} sinyal bulundu."
+    print(ozet)
     if bulunan == 0:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            data={'chat_id': CHAT_ID,
-                  'text': "📊 Tarama tamamlandı. Şu an destek/direnç bölgesinde hisse bulunamadı.",
-                  'parse_mode': 'Markdown'}
-        )
+        telegram_mesaj_gonder("📊 *Tarama tamamlandı.*\nŞu an destek/direnç bölgesinde hisse bulunamadı.")
+    else:
+        telegram_mesaj_gonder(f"✅ *Tarama tamamlandı.* {bulunan} sinyal gönderildi.")
 
 
 if __name__ == "__main__":
