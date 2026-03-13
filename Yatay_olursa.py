@@ -1,34 +1,68 @@
 import yfinance as yf
 import pandas as pd
 import requests
+import io
 import time
+import matplotlib.pyplot as plt
 
 TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
 CHAT_ID = "8599240314"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/export?format=csv"
 
-def bildirim_gonder(mesaj):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, data={'chat_id': CHAT_ID, 'text': mesaj})
-
-try:
-    print("Tarama başlatılıyor...")
-    bildirim_gonder("🚀 Tarama başladı!")
+def analiz_et():
+    # 1. Bilgilendirme mesajı
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                  data={'chat_id': CHAT_ID, 'text': "🔍 Tarama başladı, yataylık hesaplanıyor..."})
     
-    # Veriyi çek
-    df = pd.read_csv("https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/export?format=csv")
-    hisseler = [str(x) + ".IS" for x in df.iloc[:, 0].dropna()]
-    
-    # Sadece ilk 5 hisse ile test edelim (Hata varsa çabuk görelim)
-    for hisse in hisseler[:5]:
-        print(f"{hisse} taranıyor...")
-        data = yf.download(hisse, period="1mo", interval="1d").tail(10)
-        # Eğer veri boşsa veya hata varsa görelim
-        if data.empty:
-            print(f"{hisse} verisi boş!")
-            continue
+    try:
+        r = requests.get(SHEET_URL)
+        df = pd.read_csv(io.StringIO(r.text))
+        hisseler = list(set([str(x).strip().replace(".IS", "") + ".IS" for x in df.iloc[:, 0].dropna()]))
+        
+        bulunanlar = 0
+        for hisse in hisseler:
+            try:
+                # Son 10 iş günü verisi
+                df_h = yf.download(hisse, period="1mo", interval="1d").tail(10)
+                if len(df_h) < 10: continue
+                
+                fiyatlar = df_h['Close'].values
+                seri = pd.Series(fiyatlar)
+                
+                # Sıkışma skoru (5 günlük hareketli ortalama üzerinde)
+                sma = seri.rolling(window=5).mean()
+                std = seri.rolling(window=5).std()
+                bant_genisligi = (std / sma).iloc[-1]
+                
+                # Eğer sıkışma skoru 0.08'in altındaysa yataydır
+                if bant_genisligi < 0.08:
+                    bulunanlar += 1
+                    plt.figure(figsize=(8, 4))
+                    plt.plot(df_h['Close'].values, color='purple', marker='o', linewidth=2)
+                    plt.title(f"{hisse} - Yatay Skoru: {bant_genisligi:.4f}")
+                    plt.grid(True)
+                    
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format='png')
+                    buf.seek(0)
+                    plt.close()
+                    
+                    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
+                                  data={'chat_id': CHAT_ID, 'caption': f"🎯 {hisse} - Yatay Sıkışma!"}, 
+                                  files={'photo': ('grafik.png', buf)})
+                    time.sleep(1)
+            except: continue
+        
+        if bulunanlar == 0:
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                          data={'chat_id': CHAT_ID, 'text': "✅ Tarama bitti, bu hafta yatay hisse bulunamadı."})
+        else:
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                          data={'chat_id': CHAT_ID, 'text': f"✅ Tarama bitti, {bulunanlar} adet yatay hisse bulundu."})
             
-    bildirim_gonder("✅ Tarama başarıyla bitti.")
-    
-except Exception as e:
-    bildirim_gonder(f"❌ HATA: {str(e)}")
-    print(f"HATA: {e}")
+    except Exception as e:
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                      data={'chat_id': CHAT_ID, 'text': f"❌ Hata: {str(e)}"})
+
+if __name__ == "__main__":
+    analiz_et()
