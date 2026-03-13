@@ -15,45 +15,35 @@ def analiz_et():
         df = pd.read_csv(io.StringIO(r.text))
         hisseler = list(set([str(x).strip().replace(".IS", "") + ".IS" for x in df.iloc[:, 0].dropna()]))
         
-        for hisse in hisseler:
+        sonuclar = []
+        
+        for hisse in hisseler[:30]: # Test için ilk 30 hisseyi tara
             try:
                 df_h = yf.download(hisse, period="1mo", interval="1d").tail(20)
                 if len(df_h) < 20: continue
                 
-                # Bollinger Bantları ile Yataylık Kontrolü (Standart Sapma)
+                # Bollinger genişliği (Yataylık göstergesi)
                 sma = df_h['Close'].rolling(window=20).mean()
                 std = df_h['Close'].rolling(window=20).std()
-                bollinger_width = (std / sma)
+                bant_genisligi = (std / sma).iloc[-1]
                 
-                # Eğer son gün bant genişliği %5'in altındaysa yataydır
-                if bollinger_width.iloc[-1] < 0.05:
-                    
-                    # Basit Mum Grafiği (mplfinance kullanmadan)
-                    plt.figure(figsize=(8, 5))
-                    up = df_h[df_h.Close >= df_h.Open]
-                    down = df_h[df_h.Close < df_h.Open]
-                    
-                    plt.bar(up.index, up.Close-up.Open, bottom=up.Open, color='green')
-                    plt.bar(up.index, up.High-up.Close, bottom=up.Close, color='green')
-                    plt.bar(up.index, up.Low-up.Open, bottom=up.Open, color='green')
-                    
-                    plt.bar(down.index, down.Close-down.Open, bottom=down.Open, color='red')
-                    plt.bar(down.index, down.High-down.Close, bottom=down.Close, color='red')
-                    plt.bar(down.index, down.Low-down.Open, bottom=down.Open, color='red')
-                    
-                    plt.title(f"{hisse} - Yatay Sıkışma Yakalandı")
-                    
-                    buf = io.BytesIO()
-                    plt.savefig(buf, format='png')
-                    buf.seek(0)
-                    
-                    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                                  data={'chat_id': CHAT_ID, 'caption': f"🎯 {hisse} yatay seyrediyor!"}, 
-                                  files={'photo': ('grafik.png', buf)})
-                    plt.close()
-                    time.sleep(1)
+                sonuclar.append((hisse, bant_genisligi))
             except: continue
-    except: pass
+        
+        # En düşük bant genişliğine sahip (en yatay) ilk 3 hisseyi bul
+        sonuclar.sort(key=lambda x: x[1])
+        en_iyiler = sonuclar[:3]
+        
+        mesaj = "📊 Güncel En İyi 3 Yatay Hisse:\n"
+        for h, b in en_iyiler:
+            mesaj += f"{h}: Bant Genişliği {b:.4f}\n"
+            
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                      data={'chat_id': CHAT_ID, 'text': mesaj})
+                      
+    except Exception as e:
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                      data={'chat_id': CHAT_ID, 'text': f"Hata: {str(e)}"})
 
 if __name__ == "__main__":
     analiz_et()
