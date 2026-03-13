@@ -1,0 +1,14 @@
+name: SuperTrend Bot
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 8 * * *' # Her sabah 08:00 (TR saati 11:00)
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with: {python-version: '3.9'}
+      - run: pip install pandas yfinance requests matplotlib
+      - run: python SuperTrend_Bot.py
