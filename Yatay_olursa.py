@@ -3,12 +3,16 @@ import pandas as pd
 import requests
 import io
 import time
-import matplotlib.pyplot as plt
+import mplfinance as mpf
+import numpy as np
 
 TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
 CHAT_ID = "8599240314"
 SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/export?format=csv"
-ARALIK_YUZDE = 5.0 
+
+# YATAYLIK KRİTERİ: 
+# Volatiliteyi (fiyatın sapmasını) ölçüyoruz. Düşük olması "yatay" olduğu anlamına gelir.
+MAX_VOLATILITE = 0.02 
 
 def analiz_et():
     try:
@@ -18,28 +22,26 @@ def analiz_et():
         
         for hisse in hisseler:
             try:
-                df_hisse = yf.download(hisse, period="7d", interval="1d").tail(5)
-                if len(df_hisse) < 5: continue
+                df_h = yf.download(hisse, period="1mo", interval="1d").tail(10)
+                if len(df_h) < 10: continue
                 
-                low = float(df_hisse['Low'].min())
-                high = float(df_hisse['High'].max())
-                marj = ((high - low) / low) * 100
+                # YATAYLIK HESABI: Fiyatların standart sapmasının ortalamaya oranı
+                fiyatlar = df_h['Close']
+                volatilite = fiyatlar.std() / fiyatlar.mean()
                 
-                if marj <= ARALIK_YUZDE:
-                    # Grafik Çiz
-                    plt.figure(figsize=(6, 4))
-                    plt.plot(df_hisse['Close'], marker='o', color='red')
-                    plt.title(f"{hisse} - Sıkışma Marjı: %{marj:.2f}")
-                    plt.grid(True)
+                # Fiyatın son 10 günde hareket etme aralığı
+                degisim = (fiyatlar.max() - fiyatlar.min()) / fiyatlar.min()
+                
+                # Hem volatilite düşük olmalı (yataylık) hem de değişim aralığı küçük olmalı
+                if volatilite < MAX_VOLATILITE and degisim < 0.05:
                     
                     buf = io.BytesIO()
-                    plt.savefig(buf, format='png')
+                    mpf.plot(df_h, type='candle', style='charles', title=f"{hisse} - YATAY", 
+                             ylabel='Fiyat', savefig=dict(fname=buf, format='png'))
                     buf.seek(0)
-                    plt.close()
                     
-                    # Grafiği gönder
                     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                                  data={'chat_id': CHAT_ID, 'caption': f"🎯 {hisse} bulundu! Marj: %{marj:.2f}"}, 
+                                  data={'chat_id': CHAT_ID, 'caption': f"🎯 {hisse} - Yatay Sıkışma Yakalandı!"}, 
                                   files={'photo': ('grafik.png', buf)})
                     time.sleep(1)
             except: continue
