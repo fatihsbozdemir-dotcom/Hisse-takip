@@ -3,11 +3,12 @@ import pandas as pd
 import requests
 import io
 import time
+import matplotlib.pyplot as plt
 
 TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
 CHAT_ID = "8599240314"
 SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/export?format=csv"
-ARALIK_YUZDE = 10.0 # Kriterin bu, istediğin gibi değiştir
+ARALIK_YUZDE = 5.0 
 
 def analiz_et():
     try:
@@ -15,7 +16,6 @@ def analiz_et():
         df = pd.read_csv(io.StringIO(r.text))
         hisseler = list(set([str(x).strip().replace(".IS", "") + ".IS" for x in df.iloc[:, 0].dropna()]))
         
-        rapor = []
         for hisse in hisseler:
             try:
                 df_hisse = yf.download(hisse, period="7d", interval="1d").tail(5)
@@ -26,21 +26,24 @@ def analiz_et():
                 marj = ((high - low) / low) * 100
                 
                 if marj <= ARALIK_YUZDE:
-                    rapor.append(f"{hisse}: %{marj:.2f}")
-                
-                time.sleep(0.5) # Hızlandırdık
+                    # Grafik Çiz
+                    plt.figure(figsize=(6, 4))
+                    plt.plot(df_hisse['Close'], marker='o', color='red')
+                    plt.title(f"{hisse} - Sıkışma Marjı: %{marj:.2f}")
+                    plt.grid(True)
+                    
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format='png')
+                    buf.seek(0)
+                    plt.close()
+                    
+                    # Grafiği gönder
+                    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
+                                  data={'chat_id': CHAT_ID, 'caption': f"🎯 {hisse} bulundu! Marj: %{marj:.2f}"}, 
+                                  files={'photo': ('grafik.png', buf)})
+                    time.sleep(1)
             except: continue
-        
-        # Sonuçları tek mesajda gönder
-        if rapor:
-            mesaj = "🎯 Sıkışan Hisseler:\n" + "\n".join(rapor)
-        else:
-            mesaj = "✅ Tarama bitti, kriterlere uyan hisse yok."
-            
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
-                      data={'chat_id': CHAT_ID, 'text': mesaj})
-    except Exception as e:
-        pass
+    except: pass
 
 if __name__ == "__main__":
     analiz_et()
