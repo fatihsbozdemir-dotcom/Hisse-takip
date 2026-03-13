@@ -26,17 +26,23 @@ def analiz_et():
                 sma = seri.rolling(window=20).mean()
                 std = seri.rolling(window=20).std()
                 bant_genisligi = (std / sma).iloc[-1]
-                
                 sonuclar.append((hisse, bant_genisligi, df_h.tail(20)))
             except: continue
         
-        # En düşük bant genişliğine sahip ilk 10'u seç
         sonuclar.sort(key=lambda x: x[1])
         
-        for h, b, data in sonuclar[:10]:
+        # Eğer hiç yoksa, en iyileri gönder
+        hedef_liste = sonuclar[:5] if sonuclar else []
+        
+        if not hedef_liste:
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                          data={'chat_id': CHAT_ID, 'text': "⚠️ Bu hafta kriterlere uyan (çok sıkışan) hisse bulunamadı."})
+            return
+
+        for h, b, data in hedef_liste:
             plt.figure(figsize=(8, 4))
             plt.plot(data['Close'].values, color='blue', linewidth=2)
-            plt.title(f"{h} - Sıkışma Skoru: {b:.4f}")
+            plt.title(f"{h} - Skor: {b:.4f}")
             plt.grid(True, linestyle='--', alpha=0.6)
             
             buf = io.BytesIO()
@@ -45,13 +51,12 @@ def analiz_et():
             plt.close()
             
             requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                          data={'chat_id': CHAT_ID, 'caption': f"🎯 {h} - En iyi yatay hisselerden!"}, 
+                          data={'chat_id': CHAT_ID, 'caption': f"🎯 En iyi 5'ten biri: {h}\nSkor: {b:.4f}"}, 
                           files={'photo': ('grafik.png', buf)})
-            time.sleep(1.5) # Telegram spam engeli için
+            time.sleep(1)
             
     except Exception as e:
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
-                      data={'chat_id': CHAT_ID, 'text': f"Sistem Hatası: {str(e)}"})
+        pass
 
 if __name__ == "__main__":
     analiz_et()
