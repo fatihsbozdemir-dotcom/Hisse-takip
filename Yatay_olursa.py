@@ -7,10 +7,10 @@ import time
 
 # --- AYARLAR ---
 TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
-CHAT_ID = "1003838602845"
-SHEET_ID = "BURAYA_SHEET_ID_YAZ" # ÖRNEK: 1A2B3C4D5E6F...
+CHAT_ID = "-1003838602845" 
+SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
-ARALIK_YUZDE = 3.5 # Tarama kriteri (%3.5)
+ARALIK_YUZDE = 3.5 
 
 def get_hisse_listesi():
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -32,7 +32,7 @@ def get_hisse_listesi():
                 if not sembol.endswith(".IS"):
                     sembol += ".IS"
                 hisseler.append(sembol)
-        return list(set(hisseler)) # Tekrar edenleri temizle
+        return list(set(hisseler)) 
     except Exception as e:
         print(f"❌ Liste çekme hatası: {e}")
         return []
@@ -50,10 +50,15 @@ def send_telegram(mesaj, image_data=None):
 
 def analiz_et():
     hisseler = get_hisse_listesi()
+    if not hisseler:
+        print("Tarancak hisse bulunamadı.")
+        return
+
     print(f"🚀 {len(hisseler)} hisse taranıyor...")
     
     for hisse in hisseler:
         try:
+            # 5 iş günü verisi
             data = yf.download(hisse, period="7d", interval="1d").tail(5)
             if len(data) < 5: continue
 
@@ -74,9 +79,9 @@ def analiz_et():
 
                 mesaj = f"🎯 *Hisse:* `{hisse}`\n📊 *Dar Bant Marjı:* %{marj:.2f}\n✅ Sıkışma tespit edildi."
                 send_telegram(mesaj, buf)
-                time.sleep(2) # Hız sınırı için
+                time.sleep(2) 
         except Exception as e:
-            print(f"⚠️ {hisse} analizi yapılamadı: {e}")
+            print(f"⚠️ {hisse} analiz edilemedi: {e}")
 
 if __name__ == "__main__":
     analiz_et()
