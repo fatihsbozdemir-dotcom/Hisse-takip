@@ -20,25 +20,25 @@ def analiz_et():
         df = pd.read_csv(io.StringIO(r.text))
         hisseler = list(set([str(x).strip().replace(".IS", "") + ".IS" for x in df.iloc[:, 0].dropna()]))
         
-        bot_mesaj_gonder(f"🚀 {len(hisseler)} hisse için raporlama başlıyor...")
+        bot_mesaj_gonder(f"🚀 {len(hisseler)} hisse için hata giderilmiş tarama başlıyor...")
 
-        # SADECE İLK 5 HİSSEYİ TARAYIP RAPORLAYACAĞIZ
         for hisse in hisseler[:5]:
             try:
-                data = yf.download(hisse, period="7d", interval="1d").tail(5)
-                if len(data) < 5: 
-                    bot_mesaj_gonder(f"⚠️ {hisse}: Veri eksik!")
-                    continue
+                # Veriyi çek
+                df_hisse = yf.download(hisse, period="7d", interval="1d").tail(5)
+                if len(df_hisse) < 5: continue
                 
-                low = data['Low'].min()
-                high = data['High'].max()
+                # Sütunları temizle ve float yap
+                low = float(df_hisse['Low'].min())
+                high = float(df_hisse['High'].max())
+                
+                # Marjı hesapla
                 marj = ((high - low) / low) * 100
                 
-                # FİLTRE YOK! HER ŞEYİ GÖNDER
                 bot_mesaj_gonder(f"🔍 {hisse} durumu:\n📉 5 Günlük Marj: %{marj:.2f}")
                 time.sleep(1)
             except Exception as e:
-                bot_mesaj_gonder(f"❌ {hisse} hata: {str(e)}")
+                bot_mesaj_gonder(f"❌ {hisse} analiz edilemedi: {str(e)}")
         
         bot_mesaj_gonder("✅ Test raporu tamamlandı.")
         
