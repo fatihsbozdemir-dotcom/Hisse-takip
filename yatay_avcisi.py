@@ -1,4 +1,4 @@
-İmport yfinance as yf
+import yfinance as yf
 import pandas as pd
 import requests
 import mplfinance as mpf
@@ -6,17 +6,27 @@ import io
 import datetime
 
 # --- AYARLAR ---
-TELEGRAM_TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
+TELEGRAM_TOKEN = "8550118582:AAHftKsl1xCuHvGccq7oPN-QcYULJ5_UVHw"
 CHAT_ID = "-1003838602845" 
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 def analiz_et():
     try:
+        # 1. TÜRKİYE SAATİ VE BAŞLANGIÇ MESAJI
         simdi = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
+        saat_dk = simdi.strftime("%H:%M")
+        
+        baslangic_notu = (f"🤖 *{saat_dk} Taraması Başladı*\n"
+                          f"----------------------------\n"
+                          f"📋 *Strateji:* 5 Haftalık Yatay Bant\n"
+                          f"📏 *Kriter:* %2 - %10 Arasındaki Kanal\n"
+                          f"----------------------------")
+        
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={'chat_id': CHAT_ID, 'text': f'🤖 *{simdi.strftime("%H:%M")}* %2-%10 Arası Yatay Tarama Başladı...'})
+                      json={'chat_id': CHAT_ID, 'text': baslangic_notu, 'parse_mode': 'Markdown'})
 
+        # 2. VERİLERİ ÇEK
         df_sheet = pd.read_csv(SHEET_URL)
         df_sheet.columns = [c.strip() for c in df_sheet.columns]
         
@@ -31,21 +41,21 @@ def analiz_et():
             except: hedef = 0
             
             t_name = hisse if hisse.endswith(".IS") else f"{hisse}.IS"
-            # Son 10 haftalık veri çekelim ki grafikte biraz öncesini görelim
+            # Teknik analiz için 6 aylık haftalık veri çekiyoruz
             hist = yf.Ticker(t_name).history(period="6mo", interval="1wk")
             
             if hist.empty or len(hist) < 5: continue
             
-            # --- 5 HAFTALIK YATAY KONTROLÜ ---
+            # --- 5 HAFTALIK ÖZEL YATAY KONTROLÜ ---
             son_5_hafta = hist.tail(5)
             en_yuksek = son_5_hafta['High'].max()
             en_dusuk = son_5_hafta['Low'].min()
             guncel_fiyat = son_5_hafta['Close'].iloc[-1]
             
-            # Kanal genişliği yüzdesi
+            # Kanal genişliği yüzdesi (Zirve ve Dip arasındaki fark)
             kanal_genisligi = ((en_yuksek - en_dusuk) / en_dusuk) * 100
             
-            # KRİTER: %2 ile %10 arasında mı?
+            # KRİTERİMİZ: %2 ile %10 arasında mı?
             is_yatay = 2.0 <= kanal_genisligi <= 10.0
             
             bildir = False
@@ -59,19 +69,25 @@ def analiz_et():
 
             if bildir:
                 bulunan_sayi += 1
+                
+                # --- PROFESYONEL GRAFİK AYARLARI ---
                 mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
                 s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
                 
                 buf = io.BytesIO()
+                # Hacim, Izgara ve Renkli Mumlar dahil son 30 haftalık grafik
                 mpf.plot(hist.tail(30), type='candle', style=s, volume=True, 
                          title=f"\n{hisse} (Haftalik)", 
                          ylabel='Fiyat (TL)',
                          savefig=dict(fname=buf, format='png', bbox_inches='tight'))
                 buf.seek(0)
                 
+                # MESAJ İÇERİĞİ
                 msg = f"📢 *{tip}*\n📊 *Hisse:* {hisse}\n💰 *Fiyat:* {guncel_fiyat:.2f} TL"
+                
                 if hedef > 0: 
                     msg += f"\n🎯 *Hedef:* {hedef:.2f} TL"
+                    msg += f"\n📊 *Durum:* {'✅ Hedef Geçildi' if guncel_fiyat >= hedef else '⏳ Beklemede'}"
                 else:
                     msg += f"\n📏 *5 Haftalık Bant:* %{kanal_genisligi:.2f}"
                     msg += f"\n🔝 *Zirve:* {en_yuksek:.2f} / ⬇️ *Dip:* {en_dusuk:.2f}"
@@ -79,13 +95,17 @@ def analiz_et():
                 requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", 
                               files={'photo': buf}, data={'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'})
 
+        # 3. SONUÇ RAPORU
         if bulunan_sayi == 0:
              requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={'chat_id': CHAT_ID, 'text': '✅ Tarama bitti. Bu bant aralığında hisse bulunamadı.'})
+                      json={'chat_id': CHAT_ID, 'text': '✅ Tarama bitti. Belirtilen kriterlerde (yatay bant) hisse bulunamadı.'})
+        else:
+             requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                      json={'chat_id': CHAT_ID, 'text': f'✅ Tarama bitti. Toplam {bulunan_sayi} hisse kriterlere uygun görüldü.'})
 
     except Exception as e:
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={'chat_id': CHAT_ID, 'text': f'❌ Hata: {str(e)}'})
+                      json={'chat_id': CHAT_ID, 'text': f'❌ Hata Oluştu: {str(e)}'})
 
 if __name__ == "__main__":
     analiz_et()
