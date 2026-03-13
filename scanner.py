@@ -4,7 +4,7 @@ import yfinance as yf, mplfinance as mpf, matplotlib.pyplot as plt
 # ── Ayarlar ────────────────────────────────────────────────────
 # Önce environment variable dene, yoksa direkt değeri kullan
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc")
-CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID", "-1003838602845")
+CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID", "8599240314")
 SHEET_ID       = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL      = os.environ.get("SHEET_URL",
     f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv")
