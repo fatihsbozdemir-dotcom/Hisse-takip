@@ -13,10 +13,14 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=cs
 
 def analiz_et():
     try:
-        simdi = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
+        # Türkiye saati ile başlangıç mesajı
+        simdi = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)
+        baslangic_notu = f"🔍 *{simdi.strftime('%H:%M')}* Günlük %1-%5 Dar Bant Taraması Başladı..."
+        
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={'chat_id': CHAT_ID, 'text': f'🤖 *{simdi.strftime("%H:%M")}* %2-%10 Arası Yatay Tarama Başladı...'})
+                      json={'chat_id': CHAT_ID, 'text': baslangic_notu, 'parse_mode': 'Markdown'})
 
+        # Excel verisini oku
         df_sheet = pd.read_csv(SHEET_URL)
         df_sheet.columns = [c.strip() for c in df_sheet.columns]
         
@@ -24,68 +28,65 @@ def analiz_et():
 
         for index, row in df_sheet.iterrows():
             hisse = str(row.get('Hisse', '')).strip()
-            if not hisse or hisse == 'nan': continue
-            
-            hedef = row.get('Hedef_Fiyat', 0)
-            try: hedef = float(hedef)
-            except: hedef = 0
+            if not hisse or hisse.lower() == 'nan': continue
             
             t_name = hisse if hisse.endswith(".IS") else f"{hisse}.IS"
-            # Son 10 haftalık veri çekelim ki grafikte biraz öncesini görelim
-            hist = yf.Ticker(t_name).history(period="6mo", interval="1wk")
+            
+            # GÜNLÜK VERİ: Son 3 ayın günlük verilerini çekiyoruz
+            ticker = yf.Ticker(t_name)
+            hist = ticker.history(period="3mo", interval="1d")
             
             if hist.empty or len(hist) < 5: continue
             
-            # --- 5 HAFTALIK YATAY KONTROLÜ ---
-            son_5_hafta = hist.tail(5)
-            en_yuksek = son_5_hafta['High'].max()
-            en_dusuk = son_5_hafta['Low'].min()
-            guncel_fiyat = son_5_hafta['Close'].iloc[-1]
+            # --- 5 GÜNLÜK YATAY KONTROLÜ ---
+            son_5_gun = hist.tail(5)
+            en_yuksek = son_5_gun['High'].max()
+            en_dusuk = son_5_gun['Low'].min()
+            guncel_fiyat = son_5_gun['Close'].iloc[-1]
             
-            # Kanal genişliği yüzdesi
+            # Kanal genişliği (Volatility) hesaplama
+            # (En Yüksek - En Düşük) / En Düşük * 100
             kanal_genisligi = ((en_yuksek - en_dusuk) / en_dusuk) * 100
             
-            # KRİTER: %2 ile %10 arasında mı?
-            is_yatay = 2.0 <= kanal_genisligi <= 10.0
-            
-            bildir = False
-            tip = ""
-            if hedef > 0:
-                bildir = True
-                tip = "🎯 HEDEF TAKİBİ"
-            elif is_yatay:
-                bildir = True
-                tip = "🟨 %2-%10 YATAY SIKIŞMA"
-
-            if bildir:
+            # KRİTER: %1 ile %5 arasında bir sıkışma var mı?
+            if 1.0 <= kanal_genisligi <= 5.0:
                 bulunan_sayi += 1
+                
+                # Grafik Ayarları (Mum Grafiği)
                 mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
                 s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
                 
                 buf = io.BytesIO()
-                mpf.plot(hist.tail(30), type='candle', style=s, volume=True, 
-                         title=f"\n{hisse} (Haftalik)", 
+                # Son 20 günün grafiğini göster (Sıkışmayı net görmek için)
+                mpf.plot(hist.tail(20), type='candle', style=s, volume=True, 
+                         title=f"\n{hisse} (Gunluk)", 
                          ylabel='Fiyat (TL)',
                          savefig=dict(fname=buf, format='png', bbox_inches='tight'))
                 buf.seek(0)
                 
-                msg = f"📢 *{tip}*\n📊 *Hisse:* {hisse}\n💰 *Fiyat:* {guncel_fiyat:.2f} TL"
-                if hedef > 0: 
-                    msg += f"\n🎯 *Hedef:* {hedef:.2f} TL"
-                else:
-                    msg += f"\n📏 *5 Haftalık Bant:* %{kanal_genisligi:.2f}"
-                    msg += f"\n🔝 *Zirve:* {en_yuksek:.2f} / ⬇️ *Dip:* {en_dusuk:.2f}"
+                # Telegram Mesajı
+                msg = (f"🟦 *SIKIŞMA TESPİT EDİLDİ*\n"
+                       f"📊 *Hisse:* {hisse}\n"
+                       f"💰 *Fiyat:* {guncel_fiyat:.2f} TL\n"
+                       f"📏 *5 Günlük Marj:* %{kanal_genisligi:.2f}\n"
+                       f"🔝 *Direnç:* {en_yuksek:.2f}\n"
+                       f"⬇️ *Destek:* {en_dusuk:.2f}")
                 
                 requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", 
-                              files={'photo': buf}, data={'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'})
+                              files={'photo': ('plot.png', buf, 'image/png')}, 
+                              data={'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'})
 
+        # Sonuç Bildirimi
         if bulunan_sayi == 0:
              requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={'chat_id': CHAT_ID, 'text': '✅ Tarama bitti. Bu bant aralığında hisse bulunamadı.'})
+                      json={'chat_id': CHAT_ID, 'text': '✅ Tarama bitti. %1-%5 arası daralan hisse bulunamadı.'})
+        else:
+             requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                      json={'chat_id': CHAT_ID, 'text': f'✅ Tarama bitti. Toplam {bulunan_sayi} hisse bulundu.'})
 
     except Exception as e:
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={'chat_id': CHAT_ID, 'text': f'❌ Hata: {str(e)}'})
+                      json={'chat_id': CHAT_ID, 'text': f'❌ Hata oluştu: {str(e)}'})
 
 if __name__ == "__main__":
     analiz_et()
