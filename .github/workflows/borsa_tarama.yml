@@ -25,4 +25,4 @@ jobs:
           pip install yfinance pandas matplotlib requests lxml
 
       - name: Tarama Kodunu Çalıştır
-        run: python Yatayolursa.py # Python dosyanın adının main.py olduğunu varsayıyorum
+        run: python Yatay_olursa.py 
