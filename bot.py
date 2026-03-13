@@ -11,29 +11,18 @@ CHAT_ID = "-1003838602845"
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
-# TARAMA KİMLİĞİ
-TARAMA_ISMI = "GENİŞ BANT SIKIŞMA ANALİZİ"
-STRATEJI_NOTU = "Max %35 Marj / 50-200 Günlük Kontrol"
-
 def analiz_et():
     try:
         simdi = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=3)
-        tarih_str = simdi.strftime('%d/%m/%Y %H:%M')
-        
-        # Giriş Mesajı
-        baslangic_msg = (f"🔍 *TARAMA BAŞLATILDI*\n"
-                         f"📋 *İsim:* {TARAMA_ISMI}\n"
-                         f"⚙️ *Kriter:* {STRATEJI_NOTU}\n"
-                         f"⏰ *Zaman:* {tarih_str}")
-        
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={'chat_id': CHAT_ID, 'text': baslangic_msg, 'parse_mode': 'Markdown'})
+                      json={'chat_id': CHAT_ID, 'text': f"🔍 *Tarama Başladı:* {simdi.strftime('%H:%M')}\nKriter: 50-200 Gün / Max %35 Marj", 'parse_mode': 'Markdown'})
 
         df_sheet = pd.read_csv(SHEET_URL)
         df_sheet.columns = [c.strip() for c in df_sheet.columns]
         
         bulunan_sayi = 0
-        gun_periyotlari = [50, 100, 150, 200] # Kontrol edilen gün aralıkları
+        # MERCN gibi hisseleri kaçırmamak için periyotları sıklaştırdık
+        gun_periyotlari = [50, 75, 100, 125, 150, 175, 200] 
 
         for index, row in df_sheet.iterrows():
             hisse = str(row.get('Hisse', '')).strip()
@@ -41,52 +30,54 @@ def analiz_et():
             
             t_name = hisse if hisse.endswith(".IS") else f"{hisse}.IS"
             ticker = yf.Ticker(t_name)
-            hist = ticker.history(period="1y", interval="1d") # 1 yıllık veri çek
+            
+            # auto_adjust=True: Bölünme ve temettüleri hesaba katar (Grafikteki fiyatla eşleşir)
+            hist = ticker.history(period="1y", interval="1d", auto_adjust=True)
             
             if hist.empty or len(hist) < 50: continue
             
+            # Hisse için uygun bir periyot bulalım
+            bulundu = False
             for gun in gun_periyotlari:
                 if len(hist) < gun: continue
                 
                 data = hist.tail(gun)
                 en_yuksek = data['High'].max()
                 en_dusuk = data['Low'].min()
-                kanal_genisligi = ((en_yuksek - en_dusuk) / en_dusuk) * 100
                 
-                # --- YENİ KRİTER: MAKSİMUM %35 ---
-                if 1.0 <= kanal_genisligi <= 35.0:
+                # Kanal marjı hesapla
+                marj = ((en_yuksek - en_dusuk) / en_dusuk) * 100
+                
+                # ŞART: %1 ile %35 arası
+                if 1.0 <= marj <= 35.0:
                     bulunan_sayi += 1
                     guncel_fiyat = data['Close'].iloc[-1]
                     
-                    # Grafik Hazırlığı
+                    # Grafik Oluştur
+                    buf = io.BytesIO()
                     mc = mpf.make_marketcolors(up='#26a69a', down='#ef5350', inherit=True)
                     s  = mpf.make_mpf_style(marketcolors=mc, gridstyle='--', y_on_right=True)
-                    buf = io.BytesIO()
-                    mpf.plot(data, type='candle', style=s, title=f"\n{hisse} - {gun} Gunluk", 
-                             savefig=dict(fname=buf, format='png', bbox_inches='tight'))
+                    mpf.plot(data, type='candle', style=s, title=f"\n{hisse} ({gun} Gun)", savefig=dict(fname=buf, format='png'))
                     buf.seek(0)
                     
-                    # BİLGİ MESAJI (Kim, Hangi Gün, Ne Taraması)
-                    msg = (f"✅ *ADAY HİSSE BULUNDU*\n"
+                    # Detaylı Bilgi Mesajı
+                    msg = (f"✅ *HİSSE BULUNDU: {hisse}*\n"
                            f"━━━━━━━━━━━━━━━\n"
-                           f"📊 *Tarama:* {TARAMA_ISMI}\n"
-                           f"🏢 *Hisse:* #{hisse}\n"
-                           f"⏱ *Periyot:* {gun} GÜNLÜK Hareket\n"
-                           f"📏 *Tespit Edilen Marj:* %{kanal_genisligi:.2f}\n"
+                           f"📅 *Analiz Periyodu:* {gun} GÜN\n"
+                           f"📐 *Kanal Marjı:* %{marj:.2f}\n"
                            f"💰 *Son Fiyat:* {guncel_fiyat:.2f} TL\n"
-                           f"📈 *Direnç:* {en_yuksek:.2f} | 📉 *Destek:* {en_dusuk:.2f}\n"
+                           f"🔝 *Zirve:* {en_yuksek:.2f}\n"
+                           f"⬇️ *Dip:* {en_dusuk:.2f}\n"
                            f"━━━━━━━━━━━━━━━\n"
-                           f"👤 *Analiz Tipi:* Teknik Sıkışma Taraması")
+                           f"🤖 *Sistem:* %35 Geniş Bant Taraması")
                     
                     requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", 
-                              files={'photo': (f'{hisse}.png', buf, 'image/png')}, 
-                              data={'chat_id': CH_ID, 'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'})
+                                  files={'photo': (f'{hisse}.png', buf, 'image/png')}, 
+                                  data={'chat_id': CHAT_ID, 'caption': msg, 'parse_mode': 'Markdown'})
                     
-                    break # Bir hisseyi bir periyotta bulduysak diğer günlere bakmaya gerek yok
-
-        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={'chat_id': CHAT_ID, 'text': f"🏁 *Tarama Bitti.*\nToplam {bulunan_sayi} hisse kriterlere uygun.", 'parse_mode': 'Markdown'})
-
+                    bulundu = True
+                    break # Bir periyotta bulduysak diğer günlere bakma
+            
     except Exception as e:
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
                       json={'chat_id': CHAT_ID, 'text': f"❌ Hata: {str(e)}"})
