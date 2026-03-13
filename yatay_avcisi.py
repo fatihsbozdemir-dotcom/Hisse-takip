@@ -88,4 +88,4 @@ def analiz_et():
                       json={'chat_id': CHAT_ID, 'text': f'❌ Hata: {str(e)}'})
 
 if __name__ == "__main__":
-    analiz_et_ve_bildir 
+    analiz_et()
