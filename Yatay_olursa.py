@@ -4,11 +4,10 @@ import requests
 import io
 import time
 
-# --- AYARLAR ---
 TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
 CHAT_ID = "8599240314"
 SHEET_URL = "https://docs.google.com/spreadsheets/d/12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA/export?format=csv"
-ARALIK_YUZDE = 10.0 # Test için %10
+ARALIK_YUZDE = 25.0  # Kriteri iyice gevşettik (%25 yaptık)
 
 def bot_mesaj_gonder(mesaj):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -33,12 +32,13 @@ def analiz_et():
                 high = data['High'].max()
                 marj = ((high - low) / low) * 100
                 
-                # HER HİSSEYİ RAPORLA: Bu satır sayesinde sistemin çalıştığını ve marjları göreceksin
+                # KRİTİK DEĞİŞİKLİK: Her taranan hisseyi loglayalım
                 if marj <= ARALIK_YUZDE:
                     bot_mesaj_gonder(f"🎯 {hisse} bulundu! Marj: %{marj:.2f}")
-                else:
-                    # Sadece kontrol için; çok fazla mesaj gelirse bu satırı silersin
-                    print(f"{hisse} marj: %{marj:.2f} (Kriter dışı)")
+                
+                # İlk 3 hisse için mutlaka rapor ver ki sistemin çalıştığını görelim
+                if hisseler.index(hisse) < 3:
+                    bot_mesaj_gonder(f"🔍 {hisse} kontrol edildi, Marj: %{marj:.2f}")
                 
                 time.sleep(1)
             except: continue
