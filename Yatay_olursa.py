@@ -35,7 +35,7 @@ def analiz_et():
                 bant_genisligi = (std / sma).iloc[-1]
                 
                 # Eğer sıkışma skoru 0.08'in altındaysa yataydır
-                if bant_genisligi < 0.08:
+                if bant_genisligi < 0.15:
                     bulunanlar += 1
                     plt.figure(figsize=(8, 4))
                     plt.plot(df_h['Close'].values, color='purple', marker='o', linewidth=2)
