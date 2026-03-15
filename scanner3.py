@@ -41,7 +41,6 @@ def map_to_4h(data_4h, source_df, col):
     src = source_df[col].dropna()
     src.index = pd.to_datetime(src.index).tz_localize(None)
     data_4h_index = pd.to_datetime(data_4h.index).tz_localize(None)
-
     for i, ts in enumerate(data_4h_index):
         past = src[src.index <= ts]
         if len(past) > 0:
@@ -83,7 +82,6 @@ def get_mtf_levels(symbol):
         "m_wma9":  float(data_4h["m_wma9"].iloc[-1]),
         "m_wma15": float(data_4h["m_wma15"].iloc[-1]),
     }
-
     return data_4h, mtf
 
 
@@ -93,7 +91,6 @@ def analyze(symbol):
         return False, None, {}
 
     last = float(data_4h["Close"].squeeze().iloc[-1])
-    prev = float(data_4h["Close"].squeeze().iloc[-2])
 
     d9  = mtf["d_wma9"]
     d15 = mtf["d_wma15"]
@@ -102,78 +99,46 @@ def analyze(symbol):
     m9  = mtf["m_wma9"]
     m15 = mtf["m_wma15"]
 
-    # Gunluk WMA band
     d_alt = min(d9, d15)
     d_ust = max(d9, d15)
 
-    # Haftalik WMA band
-    w_alt = min(w9, w15)
-    w_ust = max(w9, w15)
+    # Fiyat gunluk WMA'larin USTUNDE olmali (altinda olanlar eleniyor)
+    fiyat_uste = last >= d_alt
 
-    # 1) Fiyat gunluk WMA9'a temas (%1.5 tolerans)
-    temas_d9  = abs(last - d9)  / last < 0.015
+    # 1) Fiyat gunluk WMA9 ve WMA15 ARASINDA
+    arasinda = d_alt <= last <= d_ust
 
-    # 2) Fiyat gunluk WMA15'e temas (%1.5 tolerans)
-    temas_d15 = abs(last - d15) / last < 0.015
+    # 2) Fiyat gunluk WMA9'a temas - USTUNDEN (%1.5 tolerans)
+    temas_d9 = last >= d9 and abs(last - d9) / last < 0.015
 
-    # 3) Fiyat gunluk WMA9 ve WMA15 ARASINDA
-    arasinda_gunluk = d_alt <= last <= d_ust
+    # 3) Fiyat gunluk WMA15'e temas - USTUNDEN (%1.5 tolerans)
+    temas_d15 = last >= d15 and abs(last - d15) / last < 0.015
 
-    # 4) Fiyat haftalik WMA9'a temas (%1.5 tolerans)
-    temas_w9  = abs(last - w9)  / last < 0.015
+    # Sinyal: Sadece ustten temas veya arasinda + WMA altinda degil
+    signal = fiyat_uste and (arasinda or temas_d9 or temas_d15)
 
-    # 5) Fiyat haftalik WMA15'e temas (%1.5 tolerans)
-    temas_w15 = abs(last - w15) / last < 0.015
+    if not signal:
+        return False, None, {}
 
-    # 6) Fiyat haftalik WMA9 ve WMA15 ARASINDA
-    arasinda_haftalik = w_alt <= last <= w_ust
-
-    # 7) Gunluk WMA9 yukari kirilim
-    prev_d9    = float(data_4h["d_wma9"].iloc[-2])
-    kirilim_d9 = prev < prev_d9 and last > d9
-
-    # 8) Haftalik WMA9 yukari kirilim
-    prev_w9    = float(data_4h["w_wma9"].iloc[-2])
-    kirilim_w9 = prev < prev_w9 and last > w9
-
-    gunluk_sinyal   = temas_d9 or temas_d15 or arasinda_gunluk
-    haftalik_sinyal = temas_w9 or temas_w15 or arasinda_haftalik
-    kirilim         = kirilim_d9 or kirilim_w9
-
-    signal = gunluk_sinyal or haftalik_sinyal or kirilim
-
-    # Sinyal tipi
-    if kirilim_d9:
-        sinyal_tipi = "KIRILIM - Gunluk WMA9 yukari kirildi"
-    elif kirilim_w9:
-        sinyal_tipi = "KIRILIM - Haftalik WMA9 yukari kirildi"
-    else:
-        detay = []
-        if arasinda_gunluk:
-            detay.append("Gunluk WMA arasinda")
-        elif temas_d9:
-            detay.append("Gunluk WMA9 temas")
-        elif temas_d15:
-            detay.append("Gunluk WMA15 temas")
-        if arasinda_haftalik:
-            detay.append("Haftalik WMA arasinda")
-        elif temas_w9:
-            detay.append("Haftalik WMA9 temas")
-        elif temas_w15:
-            detay.append("Haftalik WMA15 temas")
-        sinyal_tipi = " | ".join(detay)
+    # Sinyal detayi
+    detay = []
+    if arasinda:
+        detay.append("Gunluk WMA9-WMA15 arasinda")
+    if temas_d9:
+        detay.append("Gunluk WMA9 temas")
+    if temas_d15:
+        detay.append("Gunluk WMA15 temas")
+    sinyal_tipi = " | ".join(detay)
 
     stats = {
-        "last":            round(last, 2),
-        "mtf":             mtf,
-        "sinyal_tipi":     sinyal_tipi,
-        "kirilim":         kirilim,
-        "kirilim_d9":      kirilim_d9,
-        "kirilim_w9":      kirilim_w9,
-        "gunluk_sinyal":   gunluk_sinyal,
-        "haftalik_sinyal": haftalik_sinyal,
+        "last":        round(last, 2),
+        "mtf":         mtf,
+        "sinyal_tipi": sinyal_tipi,
+        "arasinda":    arasinda,
+        "temas_d9":    temas_d9,
+        "temas_d15":   temas_d15,
     }
-    return signal, data_4h, stats
+    return True, data_4h, stats
 
 
 def send_chart(symbol, data_4h, stats):
@@ -223,33 +188,26 @@ def send_chart(symbol, data_4h, stats):
                      label=f"{label}: {val_last}")
 
     # Sinyal isareti
-    if stats["kirilim_d9"]:
-        renk = "#00e676"
-        etiket = "KIRILIM D-WMA9"
-    elif stats["kirilim_w9"]:
-        renk = "#ffd740"
-        etiket = "KIRILIM W-WMA9"
-    elif stats["gunluk_sinyal"]:
-        renk = "#00e676"
-        etiket = "GUNLUK WMA TEMAS/ARALIK"
-    elif stats["haftalik_sinyal"]:
-        renk = "#ffd740"
-        etiket = "HAFTALIK WMA TEMAS/ARALIK"
+    if stats["arasinda"]:
+        renk   = "#ffd740"
+        etiket = "WMA ARASINDA"
+    elif stats["temas_d9"]:
+        renk   = "#00e676"
+        etiket = "WMA9 TEMAS"
     else:
-        renk = "#ffffff"
-        etiket = ""
+        renk   = "#ff5252"
+        etiket = "WMA15 TEMAS"
 
-    if etiket:
-        ax1.axvline(x=len(plot)-1, color=renk,
-                    linewidth=1.5, linestyle=":", alpha=0.8)
-        ax1.annotate(
-            etiket,
-            xy=(len(plot)-1, stats["last"]),
-            xytext=(-130, 25),
-            textcoords="offset points",
-            color=renk, fontsize=10, fontweight="bold",
-            arrowprops=dict(arrowstyle="->", color=renk, lw=1.5)
-        )
+    ax1.axvline(x=len(plot)-1, color=renk,
+                linewidth=1.5, linestyle=":", alpha=0.8)
+    ax1.annotate(
+        etiket,
+        xy=(len(plot)-1, stats["last"]),
+        xytext=(-120, 25),
+        textcoords="offset points",
+        color=renk, fontsize=11, fontweight="bold",
+        arrowprops=dict(arrowstyle="->", color=renk, lw=1.5)
+    )
 
     ax1.set_title(
         f"{symbol}  |  MTF WMA  |  {stats['last']}  |  {stats['sinyal_tipi']}",
@@ -307,14 +265,6 @@ def send_chart(symbol, data_4h, stats):
             url,
             data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
             files={"photo": f}
-        )
-
-    if stats["kirilim"]:
-        send_message(
-            f"KIRILIM ALARMI\n\n"
-            f"<b>{symbol}</b>\n"
-            f"{stats['sinyal_tipi']}\n"
-            f"Fiyat: {stats['last']}"
         )
 
     print(f"[SINYAL]: {symbol} - {stats['sinyal_tipi']}")
