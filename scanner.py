@@ -38,7 +38,7 @@ def sideways(symbol):
 
     data = yf.download(symbol, period="3mo", interval="1d")
 
-    if len(data) < 30:
+    if len(data) < 40:
         return False, data
 
     last = data.tail(30)
@@ -46,9 +46,18 @@ def sideways(symbol):
     highest = last["High"].max()
     lowest = last["Low"].min()
 
+    # fiyat aralığı
     range_percent = (highest - lowest) / lowest * 100
 
-    if range_percent < 8:
+    # trend kontrolü
+    first_price = last["Close"].iloc[0]
+    last_price = last["Close"].iloc[-1]
+
+    trend_percent = abs(last_price - first_price) / first_price * 100
+
+    # gerçek yatay şartı
+    if range_percent < 10 and trend_percent < 4:
+
         return True, data
 
     return False, data
@@ -73,7 +82,7 @@ def send_chart(symbol, data):
         url,
         data={
             "chat_id": CHAT_ID,
-            "caption": f"📊 Yatay hisse: {symbol}"
+            "caption": f"📊 Yatay konsolidasyon: {symbol}"
         },
         files=files
     )
@@ -81,7 +90,7 @@ def send_chart(symbol, data):
 
 def run():
 
-    send_message("🚀 Hisse taraması başladı")
+    send_message("🚀 Yatay konsolidasyon taraması başladı")
 
     symbols = get_symbols()
 
@@ -107,7 +116,7 @@ def run():
 
     if found == 0:
 
-        send_message("❗ Yatay hisse bulunamadı")
+        send_message("❗ Yatay konsolidasyon bulunamadı")
 
     else:
 
