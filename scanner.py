@@ -3,7 +3,7 @@ import yfinance as yf
 import requests
 import matplotlib.pyplot as plt
 
-# TELEGRAM BİLGİLERİ
+# TELEGRAM
 TELEGRAM_TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
 CHAT_ID = "1003838602845"
 
@@ -13,22 +13,25 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=cs
 
 
 def send_message(text):
+
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-    requests.post(
-        url,
-        data={
-            "chat_id": CHAT_ID,
-            "text": text
-        }
-    )
+    try:
+        requests.post(
+            url,
+            data={
+                "chat_id": CHAT_ID,
+                "text": text
+            }
+        )
+    except:
+        print("Telegram mesaj hatası")
 
 
 def get_symbols():
 
     df = pd.read_csv(SHEET_URL)
 
-    # sheet'in ilk sütununu alır
     symbols = df.iloc[:,0].dropna().tolist()
 
     return symbols
@@ -36,7 +39,7 @@ def get_symbols():
 
 def sideways(symbol):
 
-    data = yf.download(symbol + ".IS", period="3mo", interval="1d")
+    data = yf.download(symbol, period="3mo", interval="1d")
 
     if len(data) < 30:
         return False, data
@@ -57,62 +60,73 @@ def sideways(symbol):
 
 def send_chart(symbol, data):
 
-    plt.figure(figsize=(8,4))
-    plt.plot(data["Close"])
-    plt.title(symbol)
+    try:
 
-    file = f"{symbol}.png"
+        plt.figure(figsize=(8,4))
+        plt.plot(data["Close"])
+        plt.title(symbol)
 
-    plt.savefig(file)
-    plt.close()
+        file = f"{symbol}.png"
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+        plt.savefig(file)
+        plt.close()
 
-    files = {"photo": open(file, "rb")}
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
 
-    requests.post(
-        url,
-        data={
-            "chat_id": CHAT_ID,
-            "caption": f"📊 Yatay hisse bulundu: {symbol}"
-        },
-        files=files
-    )
+        files = {"photo": open(file, "rb")}
+
+        requests.post(
+            url,
+            data={
+                "chat_id": CHAT_ID,
+                "caption": f"📊 Yatay hisse bulundu: {symbol}"
+            },
+            files=files
+        )
+
+    except:
+        print("Grafik gönderme hatası")
 
 
 def run():
 
     send_message("🚀 Hisse taraması başladı")
 
-    symbols = get_symbols()
+    try:
 
-    send_message(f"🔎 Toplam {len(symbols)} hisse taranacak")
+        symbols = get_symbols()
 
-    found = 0
+        send_message(f"🔎 Toplam {len(symbols)} hisse taranacak")
 
-    for s in symbols:
+        found = 0
 
-        try:
+        for s in symbols:
 
-            signal, data = sideways(s)
+            try:
 
-            if signal:
+                signal, data = sideways(s)
 
-                found += 1
+                if signal:
 
-                send_chart(s, data)
+                    found += 1
 
-        except:
+                    send_chart(s, data)
 
-            print("Hata:", s)
+            except:
 
-    if found == 0:
+                print("Hata:", s)
 
-        send_message("❗ Yatay hisse bulunamadı")
+        if found == 0:
 
-    else:
+            send_message("❗ Yatay hisse bulunamadı")
 
-        send_message(f"✅ Tarama tamamlandı. {found} yatay hisse bulundu")
+        else:
+
+            send_message(f"✅ Tarama tamamlandı. {found} yatay hisse bulundu")
+
+    except:
+
+        send_message("❌ Tarama sırasında hata oluştu")
 
 
 run()
