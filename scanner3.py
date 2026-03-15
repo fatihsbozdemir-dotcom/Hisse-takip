@@ -130,3 +130,162 @@ def analyze(symbol):
         sinyal_tipi = "Haftalik WMA9 - WMA15 Arasinda"
     elif temas_w9:
         sinyal_tipi = "Haftalik WMA9 Temas"
+    else:
+        sinyal_tipi = "Haftalik WMA15 Temas"
+
+    stats = {
+        "last":        round(last, 2),
+        "mtf":         mtf,
+        "sinyal_tipi": sinyal_tipi,
+        "arasinda":    arasinda,
+        "temas_w9":    temas_w9,
+        "temas_w15":   temas_w15,
+    }
+    return True, data_4h, stats
+
+
+def send_chart(symbol, data_4h, stats):
+    plot = data_4h.tail(60).copy().reset_index()
+    date_col = "Datetime" if "Datetime" in plot.columns else "Date"
+    dates = pd.to_datetime(plot[date_col])
+    x = np.arange(len(plot))
+
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1, figsize=(16, 9),
+        gridspec_kw={"height_ratios": [3, 1]},
+        sharex=True
+    )
+    fig.patch.set_facecolor("#0a0a0f")
+    ax1.set_facecolor("#0a0a0f")
+    ax2.set_facecolor("#0a0a0f")
+    fig.subplots_adjust(hspace=0.05)
+
+    # Mumlar
+    for i, row in plot.iterrows():
+        o = float(row["Open"].squeeze())
+        c = float(row["Close"].squeeze())
+        h = float(row["High"].squeeze())
+        l = float(row["Low"].squeeze())
+        color  = "#26a69a" if c >= o else "#ef5350"
+        bottom = min(o, c)
+        height = abs(c - o) or (h - l) * 0.01
+        ax1.bar(i, height, bottom=bottom, color=color, width=0.6, linewidth=0)
+        ax1.plot([i, i], [l, h], color=color, linewidth=0.8)
+
+    # MTF WMA cizgileri
+    wma_cols = [
+        ("d_wma9",  "Gunluk WMA9",    "#4fc3f7", "-",  1.2),
+        ("d_wma15", "Gunluk WMA15",   "#f48fb1", "-",  1.2),
+        ("w_wma9",  "Haftalik WMA9",  "#00e676", "--", 2.0),
+        ("w_wma15", "Haftalik WMA15", "#ffd740", "--", 2.0),
+        ("m_wma9",  "Aylik WMA9",     "#40c4ff", ":",  1.3),
+        ("m_wma15", "Aylik WMA15",    "#ea80fc", ":",  1.3),
+    ]
+
+    for col, label, color, style, lw in wma_cols:
+        if col in plot.columns:
+            vals = plot[col].squeeze()
+            ax1.plot(x, vals, color=color, linewidth=lw,
+                     linestyle=style, alpha=0.9, label=label)
+
+    # Sinyal isareti
+    if stats["arasinda"]:
+        renk   = "#ffd740"
+        etiket = "WMA9 - WMA15 ARASINDA"
+    elif stats["temas_w9"]:
+        renk   = "#00e676"
+        etiket = "HAFTALIK WMA9 TEMAS"
+    else:
+        renk   = "#ffd740"
+        etiket = "HAFTALIK WMA15 TEMAS"
+
+    ax1.axvline(x=len(plot)-1, color=renk,
+                linewidth=1.5, linestyle=":", alpha=0.8)
+    ax1.annotate(
+        etiket,
+        xy=(len(plot)-1, stats["last"]),
+        xytext=(-140, 25),
+        textcoords="offset points",
+        color=renk, fontsize=11, fontweight="bold",
+        arrowprops=dict(arrowstyle="->", color=renk, lw=1.5)
+    )
+
+    ax1.set_title(
+        f"{symbol}  |  4H  |  Fiyat: {stats['last']}  |  {stats['sinyal_tipi']}",
+        color="white", fontsize=11, pad=10
+    )
+    ax1.tick_params(colors="#555")
+    ax1.yaxis.tick_right()
+    ax1.yaxis.set_label_position("right")
+    for spine in ax1.spines.values():
+        spine.set_edgecolor("#222")
+    ax1.legend(facecolor="#0f0f1a", edgecolor="#333",
+               labelcolor="white", fontsize=7,
+               loc="upper left", ncol=2)
+
+    # Hacim
+    for i, row in plot.iterrows():
+        c   = float(row["Close"].squeeze())
+        o   = float(row["Open"].squeeze())
+        vol = float(row["Volume"].squeeze())
+        color = "#26a69a" if c >= o else "#ef5350"
+        ax2.bar(i, vol, color=color, width=0.6, alpha=0.7, linewidth=0)
+
+    ax2.set_ylabel("Hacim", color="#555", fontsize=8)
+    ax2.tick_params(colors="#555", labelsize=7)
+    ax2.yaxis.tick_right()
+    ax2.yaxis.set_label_position("right")
+    for spine in ax2.spines.values():
+        spine.set_edgecolor("#222")
+
+    tick_pos    = x[::8]
+    tick_labels = [dates.iloc[i].strftime("%d/%m %H:%M")
+                   for i in range(0, len(dates), 8)]
+    ax2.set_xticks(tick_pos)
+    ax2.set_xticklabels(tick_labels, rotation=45,
+                        ha="right", color="#555", fontsize=7)
+
+    plt.tight_layout()
+    fname = f"{symbol.replace('.','_')}_mtf2.png"
+    plt.savefig(fname, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    caption = (
+        f"<b>{symbol}</b>\n"
+        f"Fiyat: {stats['last']}\n"
+        f"Sinyal: {stats['sinyal_tipi']}"
+    )
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    with open(fname, "rb") as f:
+        requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
+            files={"photo": f}
+        )
+
+    print(f"[SINYAL]: {symbol} - {stats['sinyal_tipi']}")
+
+
+def run():
+    send_message("MTF WMA Taramasi basladi")
+    symbols = get_symbols()
+    send_message(f"{len(symbols)} hisse kontrol ediliyor...")
+
+    found = 0
+    for s in symbols:
+        try:
+            signal, data_4h, stats = analyze(s)
+            if signal:
+                found += 1
+                send_chart(s, data_4h, stats)
+        except Exception as e:
+            print(f"[HATA] {s}: {e}")
+
+    if found == 0:
+        send_message("Sinyal bulunamadi")
+    else:
+        send_message(f"Tarama tamamlandi - {found} sinyal!")
+
+
+run()
