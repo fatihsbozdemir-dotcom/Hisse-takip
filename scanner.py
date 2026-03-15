@@ -5,6 +5,7 @@ import requests
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import os
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc")
@@ -61,29 +62,58 @@ def analyze(symbol):
     slope_pct = abs(slope) / mean_price
 
     is_sideways = (
-        std_ratio < 0.05 and    # %5 std sapma
-        atr_ratio < 0.05 and    # %5 ATR
+        std_ratio < 0.05 and
+        atr_ratio < 0.05 and
         slope_pct < 0.002
     )
 
+    # Hareketli ortalamalar (tüm veri üzerinden)
+    full_close = data["Close"].squeeze()
+    ma5  = float(full_close.rolling(5).mean().iloc[-1])
+    ma10 = float(full_close.rolling(10).mean().iloc[-1])
+    ma20 = float(full_close.rolling(20).mean().iloc[-1]) if len(full_close) >= 20 else None
+    last_close = float(full_close.iloc[-1])
+
+    # Hangi MA'ya temas var? (fiyat MA'nın %1 yakınındaysa)
+    temas = []
+    for ma_val, ma_name in [(ma5, "MA5"), (ma10, "MA10"), (ma20, "MA20")]:
+        if ma_val and abs(last_close - ma_val) / last_close < 0.01:
+            temas.append(ma_name)
+
     stats = {
-        "fiyat": round(mean_price, 2),
-        "destek": round(float(low.min()), 2),
-        "direnc": round(float(high.max()), 2),
-        "std": round(std_ratio * 100, 2),
-        "atr": round(atr_ratio * 100, 2),
+        "fiyat":      round(mean_price, 2),
+        "destek":     round(float(low.min()), 2),
+        "direnc":     round(float(high.max()), 2),
+        "std":        round(std_ratio * 100, 2),
+        "atr":        round(atr_ratio * 100, 2),
+        "ma5":        round(ma5, 2),
+        "ma10":       round(ma10, 2),
+        "ma20":       round(ma20, 2) if ma20 else None,
+        "temas":      temas,
+        "last_close": round(last_close, 2),
     }
     return is_sideways, data, stats
 
 
 def send_chart(symbol, data, stats):
-    last = data.tail(10).copy().reset_index()
+    # Tüm veriyi al, tarihleri düzenle
+    plot_data = data.tail(20).copy().reset_index()
 
-    fig, ax = plt.subplots(figsize=(10, 5))
+    dates = pd.to_datetime(plot_data["Date"])
+    x_pos = np.arange(len(plot_data))
+
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1, figsize=(14, 8),
+        gridspec_kw={"height_ratios": [3, 1]},
+        sharex=True
+    )
     fig.patch.set_facecolor("#0f1117")
-    ax.set_facecolor("#0f1117")
+    ax1.set_facecolor("#0f1117")
+    ax2.set_facecolor("#0f1117")
+    fig.subplots_adjust(hspace=0.05)
 
-    for i, row in last.iterrows():
+    # ── Mumlar ──
+    for i, row in plot_data.iterrows():
         o = float(row["Open"].squeeze())
         c = float(row["Close"].squeeze())
         h = float(row["High"].squeeze())
@@ -91,29 +121,86 @@ def send_chart(symbol, data, stats):
         color = "#26a69a" if c >= o else "#ef5350"
         bottom = min(o, c)
         height = abs(c - o) or (h - l) * 0.01
-        ax.bar(i, height, bottom=bottom, color=color, width=0.7, linewidth=0)
-        ax.plot([i, i], [l, h], color=color, linewidth=0.8)
+        ax1.bar(i, height, bottom=bottom, color=color, width=0.6, linewidth=0)
+        ax1.plot([i, i], [l, h], color=color, linewidth=0.9)
 
-    ax.axhline(stats["destek"], color="#ff9800", linewidth=1.2,
-               linestyle="--", alpha=0.8, label=f"Destek: {stats['destek']}")
-    ax.axhline(stats["direnc"], color="#42a5f5", linewidth=1.2,
-               linestyle="--", alpha=0.8, label=f"Direnc: {stats['direnc']}")
+    # ── Hareketli Ortalamalar ──
+    close_series = plot_data["Close"].squeeze()
+    ma5_line  = close_series.rolling(5).mean()
+    ma10_line = close_series.rolling(10).mean()
+    ma20_line = close_series.rolling(20).mean()
 
-    ax.set_title(f"{symbol} - Yatay Konsolidasyon", color="white", fontsize=13)
-    ax.tick_params(colors="#888888")
-    for spine in ax.spines.values():
+    ax1.plot(x_pos, ma5_line,  color="#f5c518", linewidth=1.2, label=f"MA5: {stats['ma5']}")
+    ax1.plot(x_pos, ma10_line, color="#1e90ff", linewidth=1.2, label=f"MA10: {stats['ma10']}")
+    if stats["ma20"]:
+        ax1.plot(x_pos, ma20_line, color="#ff69b4", linewidth=1.2, label=f"MA20: {stats['ma20']}")
+
+    # ── Destek / Direnç ──
+    ax1.axhline(stats["destek"], color="#ff9800", linewidth=1.2,
+                linestyle="--", alpha=0.8, label=f"Destek: {stats['destek']}")
+    ax1.axhline(stats["direnc"], color="#42a5f5", linewidth=1.2,
+                linestyle="--", alpha=0.8, label=f"Direnc: {stats['direnc']}")
+
+    # ── Temas etiketi ──
+    if stats["temas"]:
+        temas_str = " & ".join(stats["temas"])
+        ax1.annotate(
+            f"⚡ {temas_str} temasinda!",
+            xy=(len(plot_data) - 1, stats["last_close"]),
+            xytext=(-80, 15),
+            textcoords="offset points",
+            color="#ffdd57",
+            fontsize=9,
+            fontweight="bold",
+            arrowprops=dict(arrowstyle="->", color="#ffdd57", lw=1.2)
+        )
+
+    ax1.set_title(f"{symbol}  |  Yatay Konsolidasyon  |  Son fiyat: {stats['last_close']}",
+                  color="white", fontsize=13, pad=10)
+    ax1.tick_params(colors="#888888")
+    ax1.yaxis.tick_right()
+    ax1.yaxis.set_label_position("right")
+    for spine in ax1.spines.values():
         spine.set_edgecolor("#333333")
-    ax.legend(facecolor="#1e1e2e", edgecolor="#333", labelcolor="white", fontsize=9)
+    legend = ax1.legend(facecolor="#1a1a2e", edgecolor="#333",
+                        labelcolor="white", fontsize=8, loc="upper left")
+
+    # ── Hacim ──
+    for i, row in plot_data.iterrows():
+        c = float(row["Close"].squeeze())
+        o = float(row["Open"].squeeze())
+        color = "#26a69a" if c >= o else "#ef5350"
+        vol = float(row["Volume"].squeeze())
+        ax2.bar(i, vol, color=color, width=0.6, alpha=0.8, linewidth=0)
+
+    ax2.set_ylabel("Hacim", color="#888888", fontsize=8)
+    ax2.tick_params(colors="#888888", labelsize=7)
+    ax2.yaxis.tick_right()
+    ax2.yaxis.set_label_position("right")
+    for spine in ax2.spines.values():
+        spine.set_edgecolor("#333333")
+
+    # ── X ekseni tarihleri ──
+    ax2.set_xticks(x_pos)
+    ax2.set_xticklabels(
+        [d.strftime("%d/%m") for d in dates],
+        rotation=45, ha="right", color="#888888", fontsize=7
+    )
+
     plt.tight_layout()
 
     fname = f"{symbol.replace('.', '_')}.png"
-    plt.savefig(fname, dpi=130, bbox_inches="tight")
+    plt.savefig(fname, dpi=150, bbox_inches="tight")
     plt.close()
 
+    # ── Caption ──
+    temas_text = f"Temas: {', '.join(stats['temas'])}" if stats["temas"] else "MA temasi yok"
     caption = (
         f"<b>{symbol}</b> - Yatay Aday\n"
-        f"Fiyat: {stats['fiyat']}\n"
+        f"Fiyat: {stats['last_close']}\n"
         f"Destek: {stats['destek']} | Direnc: {stats['direnc']}\n"
+        f"MA5: {stats['ma5']} | MA10: {stats['ma10']} | MA20: {stats['ma20']}\n"
+        f"📌 {temas_text}\n"
         f"Std: %{stats['std']} | ATR: %{stats['atr']}"
     )
 
