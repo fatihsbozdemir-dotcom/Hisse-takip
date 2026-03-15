@@ -51,18 +51,16 @@ def analyze(symbol):
     atr_ratio = float(tr.mean()) / mean_price
 
     is_sideways = (
-        std_ratio < 0.07 and
-        atr_ratio < 0.07
+        std_ratio < 0.04 and
+        atr_ratio < 0.04
     )
 
     full_close = data["Close"].squeeze()
 
-    # EMA
     ema8  = float(full_close.ewm(span=8,  adjust=False).mean().iloc[-1])
     ema13 = float(full_close.ewm(span=13, adjust=False).mean().iloc[-1])
     ema21 = float(full_close.ewm(span=21, adjust=False).mean().iloc[-1])
 
-    # WMA
     wma9_series  = wma(full_close, 9)
     wma15_series = wma(full_close, 15)
     wma9_val     = float(wma9_series.iloc[-1])
@@ -70,9 +68,6 @@ def analyze(symbol):
     wma9_prev    = float(wma9_series.iloc[-2])
     wma15_prev   = float(wma15_series.iloc[-2])
 
-    # WMA kesişim tespiti
-    # Önceki mumda wma9 < wma15, şimdi wma9 > wma15 → Altın Kesişim (Bullish)
-    # Önceki mumda wma9 > wma15, şimdi wma9 < wma15 → Ölüm Kesişimi (Bearish)
     wma_kesisim = None
     if wma9_prev < wma15_prev and wma9_val > wma15_val:
         wma_kesisim = "🟡 WMA Altin Kesisim (WMA9 WMA15 üstüne cikti) — ALIM SİNYALİ"
@@ -81,7 +76,6 @@ def analyze(symbol):
 
     last_close = float(full_close.iloc[-1])
 
-    # EMA temas
     temas = []
     for val, name in [(ema8, "EMA8"), (ema13, "EMA13"), (ema21, "EMA21")]:
         if abs(last_close - val) / last_close < 0.015:
@@ -182,7 +176,6 @@ def send_chart(symbol, data, stats):
     ax2.set_facecolor("#0f1117")
     fig.subplots_adjust(hspace=0.05)
 
-    # ── Mumlar ──
     for i, row in plot_data.iterrows():
         o = float(row["Open"].squeeze())
         c = float(row["Close"].squeeze())
@@ -194,18 +187,14 @@ def send_chart(symbol, data, stats):
         ax1.bar(i, height, bottom=bottom, color=color, width=0.6, linewidth=0)
         ax1.plot([i, i], [l, h], color=color, linewidth=0.9)
 
-    # ── EMA ──
     ax1.plot(x_pos, ema8_line,  color="#f5c518", linewidth=1.2, label=f"EMA8: {stats['ema8']}")
     ax1.plot(x_pos, ema13_line, color="#00e5ff", linewidth=1.2, label=f"EMA13: {stats['ema13']}")
     ax1.plot(x_pos, ema21_line, color="#ff69b4", linewidth=1.2, label=f"EMA21: {stats['ema21']}")
-
-    # ── WMA ──
     ax1.plot(x_pos, wma9_line,  color="#76ff03", linewidth=1.4,
              linestyle="--", label=f"WMA9: {stats['wma9']}")
     ax1.plot(x_pos, wma15_line, color="#ff6d00", linewidth=1.4,
              linestyle="--", label=f"WMA15: {stats['wma15']}")
 
-    # ── WMA kesişim noktasını işaretle ──
     if stats["wma_kesisim"]:
         ax1.axvline(x=len(plot_data) - 1, color="#ffdd57",
                     linewidth=1.5, linestyle=":", alpha=0.7)
@@ -220,13 +209,11 @@ def send_chart(symbol, data, stats):
             arrowprops=dict(arrowstyle="->", color="#ffdd57", lw=1.5)
         )
 
-    # ── Destek / Direnç ──
     ax1.axhline(stats["destek"], color="#ff9800", linewidth=1.2,
                 linestyle="--", alpha=0.8, label=f"Destek: {stats['destek']}")
     ax1.axhline(stats["direnc"], color="#42a5f5", linewidth=1.2,
                 linestyle="--", alpha=0.8, label=f"Direnc: {stats['direnc']}")
 
-    # ── Formasyon etiketi ──
     if stats["formasyon"]:
         formasyon_str = " | ".join(stats["formasyon"])
         ax1.annotate(
@@ -252,7 +239,6 @@ def send_chart(symbol, data, stats):
     ax1.legend(facecolor="#1a1a2e", edgecolor="#333",
                labelcolor="white", fontsize=7, loc="upper left")
 
-    # ── Hacim ──
     for i, row in plot_data.iterrows():
         c   = float(row["Close"].squeeze())
         o   = float(row["Open"].squeeze())
@@ -282,19 +268,16 @@ def send_chart(symbol, data, stats):
     temas_text     = ", ".join(stats["temas"]) if stats["temas"] else "EMA temasi yok"
 
     caption = (
-        f"<b>{symbol}</b> — Yatay + Formasyon\n"
+        f"<b>{symbol}</b> — Yatay + WMA Kesisim\n"
         f"💰 Fiyat: {stats['last_close']}\n"
         f"🟢 Destek: {stats['destek']}  |  🔴 Direnc: {stats['direnc']}\n"
         f"📈 EMA8: {stats['ema8']} | EMA13: {stats['ema13']} | EMA21: {stats['ema21']}\n"
         f"📊 WMA9: {stats['wma9']} | WMA15: {stats['wma15']}\n"
         f"⚡ EMA Temas: {temas_text}\n"
         f"🕯 {formasyon_text}\n"
-        f"📉 Std: %{stats['std']} | ATR: %{stats['atr']}"
+        f"📉 Std: %{stats['std']} | ATR: %{stats['atr']}\n\n"
+        f"🚨 <b>{stats['wma_kesisim']}</b>"
     )
-
-    # WMA kesişim varsa ayrıca bildir
-    if stats["wma_kesisim"]:
-        caption += f"\n\n🚨 <b>{stats['wma_kesisim']}</b>"
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     with open(fname, "rb") as f:
@@ -304,21 +287,19 @@ def send_chart(symbol, data, stats):
             files={"photo": f}
         )
 
-    # WMA kesişimi ayrı mesaj olarak da gönder
-    if stats["wma_kesisim"]:
-        send_message(
-            f"🚨 <b>WMA KESİSİM ALARMI</b>\n\n"
-            f"<b>{symbol}</b>\n"
-            f"{stats['wma_kesisim']}\n"
-            f"💰 Fiyat: {stats['last_close']}\n"
-            f"WMA9: {stats['wma9']} | WMA15: {stats['wma15']}"
-        )
+    send_message(
+        f"🚨 <b>WMA KESİSİM ALARMI</b>\n\n"
+        f"<b>{symbol}</b>\n"
+        f"{stats['wma_kesisim']}\n"
+        f"💰 Fiyat: {stats['last_close']}\n"
+        f"WMA9: {stats['wma9']} | WMA15: {stats['wma15']}"
+    )
 
     print(f"[GRAFIK]: {symbol}")
 
 
 def run():
-    send_message("🔍 Yatay + Formasyon + WMA taramasi basladi")
+    send_message("🔍 Yatay + WMA Kesisim taramasi basladi")
     symbols = get_symbols()
     send_message(f"📋 {len(symbols)} hisse kontrol ediliyor...")
 
@@ -326,14 +307,14 @@ def run():
     for s in symbols:
         try:
             signal, data, stats = analyze(s)
-            if signal:
+            if signal and stats.get("wma_kesisim"):
                 found += 1
                 send_chart(s, data, stats)
         except Exception as e:
             print(f"[HATA] {s}: {e}")
 
     if found == 0:
-        send_message("⚠️ Yatay hisse bulunamadi")
+        send_message("⚠️ Yatay + WMA kesisimi olan hisse bulunamadi")
     else:
         send_message(f"✅ Tarama tamamlandi — {found} hisse bulundu!")
 
