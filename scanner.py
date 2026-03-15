@@ -7,21 +7,29 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import os
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "8599240314")
 
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 
 def send_message(text):
+    print(f"[MESAJ]: {text}")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"})
+    r = requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML"
+    })
+    print(f"[YANIT]: {r.status_code} - {r.text}")
 
 
 def get_symbols():
     df = pd.read_csv(SHEET_URL)
-    return df.iloc[:, 0].dropna().tolist()
+    symbols = df.iloc[:, 0].dropna().tolist()
+    print(f"[SEMBOLLER]: {symbols}")
+    return symbols
 
 
 def analyze(symbol):
@@ -116,32 +124,43 @@ def send_chart(symbol, data, stats):
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     with open(fname, "rb") as f:
-        requests.post(
+        r = requests.post(
             url,
             data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
             files={"photo": f}
         )
+    print(f"[GRAFIK]: {symbol} - {r.status_code}")
 
 
 def run():
-    send_message("Yatay hisse taramasi basladi")
+    print(f"[TOKEN]: {TELEGRAM_TOKEN[:15]}...")
+    print(f"[CHAT_ID]: {CHAT_ID}")
+
+    send_message("Tarama basladi")
+
     symbols = get_symbols()
-    send_message(f"{len(symbols)} hisse kontrol ediliyor")
+
+    if not symbols:
+        send_message("HATA: Hisse listesi bos!")
+        return
+
+    send_message(f"{len(symbols)} hisse kontrol ediliyor...")
 
     found = 0
     for s in symbols:
         try:
+            print(f"[ANALIZ]: {s}")
             signal, data, stats = analyze(s)
             if signal:
                 found += 1
                 send_chart(s, data, stats)
         except Exception as e:
-            print(f"Hata [{s}]: {e}")
+            print(f"[HATA] {s}: {e}")
 
     if found == 0:
-        send_message("Yatay hisse bulunamadi")
+        send_message("Tarama tamamlandi - yatay hisse bulunamadi")
     else:
-        send_message(f"Tarama tamamlandi - {found} yatay hisse bulundu")
+        send_message(f"Tarama tamamlandi - {found} yatay hisse bulundu!")
 
 
 run()
