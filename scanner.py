@@ -14,7 +14,7 @@ def get_symbols():
 
     df = pd.read_csv(SHEET_URL)
 
-    return df["symbol"].dropna().tolist()
+    return df["hisse"].dropna().tolist()
 
 
 def sideways(symbol):
