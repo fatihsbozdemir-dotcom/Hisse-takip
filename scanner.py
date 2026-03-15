@@ -37,7 +37,7 @@ def analyze(symbol):
     if len(data) < 10:
         return False, data, {}
 
-    last = data.tail(10).copy()  # 10 günlük analiz
+    last = data.tail(10).copy()
     close = last["Close"].squeeze()
     high = last["High"].squeeze()
     low = last["Low"].squeeze()
@@ -61,8 +61,8 @@ def analyze(symbol):
     slope_pct = abs(slope) / mean_price
 
     is_sideways = (
-        std_ratio < 0.025 and
-        atr_ratio < 0.025 and
+        std_ratio < 0.05 and    # %5 std sapma
+        atr_ratio < 0.05 and    # %5 ATR
         slope_pct < 0.002
     )
 
