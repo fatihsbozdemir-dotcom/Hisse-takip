@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 # TELEGRAM
 TELEGRAM_TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
-CHAT_ID = "1003838602845"
+CHAT_ID = "8599240314"
 
 # GOOGLE SHEET
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
@@ -108,25 +108,4 @@ def run():
 
                 if signal:
 
-                    found += 1
-
-                    send_chart(s, data)
-
-            except:
-
-                print("Hata:", s)
-
-        if found == 0:
-
-            send_message("❗ Yatay hisse bulunamadı")
-
-        else:
-
-            send_message(f"✅ Tarama tamamlandı. {found} yatay hisse bulundu")
-
-    except:
-
-        send_message("❌ Tarama sırasında hata oluştu")
-
-
-run()
+                    found +=
