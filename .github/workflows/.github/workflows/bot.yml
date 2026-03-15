@@ -1,0 +1,24 @@
+name: BIST Tarama
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Python kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.10
+
+      - name: Kütüphane kur
+        run: pip install -r requirements.txt
+
+      - name: Bot çalıştır
+        run: python scanner.py
