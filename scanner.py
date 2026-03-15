@@ -3,7 +3,7 @@ import yfinance as yf
 import requests
 import matplotlib.pyplot as plt
 
-# TELEGRAM
+# TELEGRAM BİLGİLERİ
 TELEGRAM_TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
 CHAT_ID = "1003838602845"
 
@@ -12,18 +12,31 @@ SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 
+def send_message(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
+    requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": text
+        }
+    )
+
+
 def get_symbols():
+
     df = pd.read_csv(SHEET_URL)
 
-    # ilk sütunu kullan
-    symbols = df.iloc[:, 0].dropna().tolist()
+    # sheet'in ilk sütununu alır
+    symbols = df.iloc[:,0].dropna().tolist()
 
     return symbols
 
 
 def sideways(symbol):
 
-    data = yf.download(symbol, period="3mo", interval="1d")
+    data = yf.download(symbol + ".IS", period="3mo", interval="1d")
 
     if len(data) < 30:
         return False, data
@@ -61,7 +74,7 @@ def send_chart(symbol, data):
         url,
         data={
             "chat_id": CHAT_ID,
-            "caption": f"Yatay hisse bulundu: {symbol}"
+            "caption": f"📊 Yatay hisse bulundu: {symbol}"
         },
         files=files
     )
@@ -69,9 +82,13 @@ def send_chart(symbol, data):
 
 def run():
 
+    send_message("🚀 Hisse taraması başladı")
+
     symbols = get_symbols()
 
-    print("Tarama başladı...")
+    send_message(f"🔎 Toplam {len(symbols)} hisse taranacak")
+
+    found = 0
 
     for s in symbols:
 
@@ -81,13 +98,21 @@ def run():
 
             if signal:
 
-                print("Bulundu:", s)
+                found += 1
 
                 send_chart(s, data)
 
         except:
 
             print("Hata:", s)
+
+    if found == 0:
+
+        send_message("❗ Yatay hisse bulunamadı")
+
+    else:
+
+        send_message(f"✅ Tarama tamamlandı. {found} yatay hisse bulundu")
 
 
 run()
