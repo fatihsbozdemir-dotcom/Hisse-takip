@@ -29,7 +29,7 @@ def get_symbols():
 
     df = pd.read_csv(SHEET_URL)
 
-    symbols = df.iloc[:, 0].dropna().tolist()
+    symbols = df.iloc[:,0].dropna().tolist()
 
     return symbols
 
@@ -41,15 +41,14 @@ def sideways(symbol):
     if len(data) < 30:
         return False, data
 
-    mean = data["Close"].rolling(20).mean()
-    std = data["Close"].rolling(20).std()
+    last = data.tail(30)
 
-    upper = mean + 2 * std
-    lower = mean - 2 * std
+    highest = last["High"].max()
+    lowest = last["Low"].min()
 
-    width = (upper - lower) / mean * 100
+    range_percent = (highest - lowest) / lowest * 100
 
-    if width.iloc[-1] < 6:
+    if range_percent < 8:
         return True, data
 
     return False, data
@@ -74,7 +73,7 @@ def send_chart(symbol, data):
         url,
         data={
             "chat_id": CHAT_ID,
-            "caption": f"📊 Yatay hisse bulundu: {symbol}"
+            "caption": f"📊 Yatay hisse: {symbol}"
         },
         files=files
     )
