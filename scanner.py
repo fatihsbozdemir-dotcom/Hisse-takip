@@ -33,11 +33,11 @@ def get_symbols():
 
 
 def analyze(symbol):
-    data = yf.download(symbol, period="3mo", interval="1d", progress=False)
-    if len(data) < 20:
+    data = yf.download(symbol, period="1mo", interval="1d", progress=False)
+    if len(data) < 10:
         return False, data, {}
 
-    last = data.tail(20).copy()
+    last = data.tail(10).copy()  # 10 günlük analiz
     close = last["Close"].squeeze()
     high = last["High"].squeeze()
     low = last["Low"].squeeze()
@@ -55,9 +55,6 @@ def analyze(symbol):
     atr = float(tr.mean())
     atr_ratio = atr / mean_price
 
-    bb_std = float(close.rolling(20).std().iloc[-1])
-    bb_width = (bb_std * 2) / mean_price
-
     y = close.values.astype(float)
     x = np.arange(len(y))
     slope = float(np.polyfit(x, y, 1)[0])
@@ -66,7 +63,6 @@ def analyze(symbol):
     is_sideways = (
         std_ratio < 0.025 and
         atr_ratio < 0.025 and
-        bb_width < 0.06 and
         slope_pct < 0.002
     )
 
@@ -76,13 +72,12 @@ def analyze(symbol):
         "direnc": round(float(high.max()), 2),
         "std": round(std_ratio * 100, 2),
         "atr": round(atr_ratio * 100, 2),
-        "bb_width": round(bb_width * 100, 2),
     }
     return is_sideways, data, stats
 
 
 def send_chart(symbol, data, stats):
-    last = data.tail(40).copy().reset_index()
+    last = data.tail(10).copy().reset_index()
 
     fig, ax = plt.subplots(figsize=(10, 5))
     fig.patch.set_facecolor("#0f1117")
