@@ -1,0 +1,26 @@
+name: MTF WMA Tarayici
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1-5"    # Sabah 10:00 TR (açılış)
+    - cron: "0 10 * * 1-5"   # 13:00 TR
+    - cron: "0 14 * * 1-5"   # 17:00 TR
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Python kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Kutuphane kur
+        run: pip install yfinance pandas numpy requests matplotlib
+
+      - name: Tarayici calistir
+        run: python scanner3.py
