@@ -3,18 +3,22 @@ import yfinance as yf
 import requests
 import matplotlib.pyplot as plt
 
-TELEGRAM_TOKEN = "TOKEN"
-CHAT_ID = "CHAT_ID"
+# TELEGRAM
+TELEGRAM_TOKEN = "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc"
+CHAT_ID = "1003838602845"
 
+# GOOGLE SHEET
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 
 def get_symbols():
-
     df = pd.read_csv(SHEET_URL)
 
-    return df["hisse"].dropna().tolist()
+    # ilk sütunu kullan
+    symbols = df.iloc[:, 0].dropna().tolist()
+
+    return symbols
 
 
 def sideways(symbol):
@@ -40,7 +44,7 @@ def sideways(symbol):
 
 def send_chart(symbol, data):
 
-    plt.figure()
+    plt.figure(figsize=(8,4))
     plt.plot(data["Close"])
     plt.title(symbol)
 
@@ -55,16 +59,35 @@ def send_chart(symbol, data):
 
     requests.post(
         url,
-        data={"chat_id": CHAT_ID, "caption": f"Yatay hisse bulundu: {symbol}"},
-        files=files,
+        data={
+            "chat_id": CHAT_ID,
+            "caption": f"Yatay hisse bulundu: {symbol}"
+        },
+        files=files
     )
 
 
-symbols = get_symbols()
+def run():
 
-for s in symbols:
+    symbols = get_symbols()
 
-    signal, data = sideways(s)
+    print("Tarama başladı...")
 
-    if signal:
-        send_chart(s, data)
+    for s in symbols:
+
+        try:
+
+            signal, data = sideways(s)
+
+            if signal:
+
+                print("Bulundu:", s)
+
+                send_chart(s, data)
+
+        except:
+
+            print("Hata:", s)
+
+
+run()
