@@ -94,49 +94,41 @@ def analyze(symbol):
 
     d9  = mtf["d_wma9"]
     d15 = mtf["d_wma15"]
-    w9  = mtf["w_wma9"]
-    w15 = mtf["w_wma15"]
-    m9  = mtf["m_wma9"]
-    m15 = mtf["m_wma15"]
 
-    d_alt = min(d9, d15)
-    d_ust = max(d9, d15)
+    # WMA9 her zaman buyuk, WMA15 kucuk olmayabilir
+    # Hangisi buyuk hangisi kucuk olursa olsun dogru hesapla
+    wma_ust = max(d9, d15)  # iki WMA'nin buyugu
+    wma_alt = min(d9, d15)  # iki WMA'nin kucugu
 
-    # Fiyat gunluk WMA'larin USTUNDE olmali (altinda olanlar eleniyor)
-    fiyat_uste = last >= d_alt
+    # DURUM 1: Fiyat WMA9 ve WMA15 ARASINDA
+    # Kesinlikle: wma_alt <= fiyat <= wma_ust
+    arasinda = wma_alt <= last <= wma_ust
 
-    # 1) Fiyat gunluk WMA9 ve WMA15 ARASINDA
-    arasinda = d_alt <= last <= d_ust
+    # DURUM 2: Fiyat WMA15 UZERINDE ve WMA9'a TEMAS
+    # Fiyat WMA15'in kesinlikle uzerinde (last > d15)
+    # VE WMA9'a %1.5 yakin
+    wma9_temas = (
+        last > d15 and              # WMA15 kesinlikle altinda kalmali
+        last > d9 and               # WMA9 da altinda kalmali
+        abs(last - d9) / last < 0.015  # WMA9'a %1.5 yakin
+    )
 
-    # 2) Fiyat gunluk WMA9'a temas - USTUNDEN (%1.5 tolerans)
-    temas_d9 = last >= d9 and abs(last - d9) / last < 0.015
-
-    # 3) Fiyat gunluk WMA15'e temas - USTUNDEN (%1.5 tolerans)
-    temas_d15 = last >= d15 and abs(last - d15) / last < 0.015
-
-    # Sinyal: Sadece ustten temas veya arasinda + WMA altinda degil
-    signal = fiyat_uste and (arasinda or temas_d9 or temas_d15)
+    signal = arasinda or wma9_temas
 
     if not signal:
         return False, None, {}
 
-    # Sinyal detayi
-    detay = []
     if arasinda:
-        detay.append("Gunluk WMA9-WMA15 arasinda")
-    if temas_d9:
-        detay.append("Gunluk WMA9 temas")
-    if temas_d15:
-        detay.append("Gunluk WMA15 temas")
-    sinyal_tipi = " | ".join(detay)
+        sinyal_tipi = "WMA9 ve WMA15 arasinda"
+    else:
+        sinyal_tipi = "WMA15 uzerinde - WMA9 temas"
 
     stats = {
         "last":        round(last, 2),
         "mtf":         mtf,
         "sinyal_tipi": sinyal_tipi,
         "arasinda":    arasinda,
-        "temas_d9":    temas_d9,
-        "temas_d15":   temas_d15,
+        "wma9_temas":  wma9_temas,
     }
     return True, data_4h, stats
 
@@ -188,15 +180,8 @@ def send_chart(symbol, data_4h, stats):
                      label=f"{label}: {val_last}")
 
     # Sinyal isareti
-    if stats["arasinda"]:
-        renk   = "#ffd740"
-        etiket = "WMA ARASINDA"
-    elif stats["temas_d9"]:
-        renk   = "#00e676"
-        etiket = "WMA9 TEMAS"
-    else:
-        renk   = "#ff5252"
-        etiket = "WMA15 TEMAS"
+    renk   = "#ffd740" if stats["arasinda"] else "#00e676"
+    etiket = "WMA ARASINDA" if stats["arasinda"] else "WMA9 TEMAS"
 
     ax1.axvline(x=len(plot)-1, color=renk,
                 linewidth=1.5, linestyle=":", alpha=0.8)
