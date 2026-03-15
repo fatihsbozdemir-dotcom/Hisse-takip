@@ -294,24 +294,27 @@ def send_chart(symbol, data_4h, stats):
 
 
 def run():
-    send_message("🔍 MTF WMA Taramasi basladi\n📊 Günlük + Haftalık + Aylık")
+    send_message("🔍 MTF WMA Debug taramasi basladi")
     symbols = get_symbols()
-    send_message(f"📋 {len(symbols)} hisse kontrol ediliyor...")
 
-    found = 0
-    for s in symbols:
+    for s in symbols[:10]:  # Sadece ilk 10 hisse test
         try:
-            signal, data_4h, stats = analyze(s)
-            if signal:
-                found += 1
-                send_chart(s, data_4h, stats)
+            data_4h, mtf = get_mtf_levels(s)
+            if data_4h is None:
+                print(f"[ATLANDI] {s}")
+                continue
+
+            last = float(data_4h["Close"].squeeze().iloc[-1])
+            d9   = mtf["d_wma9"]
+            d15  = mtf["d_wma15"]
+            w9   = mtf["w_wma9"]
+
+            print(f"{s} | Fiyat:{round(last,2)} | D9:{round(d9,2)} | D15:{round(d15,2)} | W9:{round(w9,2)}")
+            print(f"  Fiyat>D9:{last>d9} | Fiyat>D15:{last>d15} | Fiyat>W9:{last>w9}")
+
         except Exception as e:
             print(f"[HATA] {s}: {e}")
 
-    if found == 0:
-        send_message("⚠️ Sinyal bulunamadi")
-    else:
-        send_message(f"✅ Tarama tamamlandi — {found} sinyal!")
-
+    send_message("Debug tamamlandi - loglara bak")
 
 run()
