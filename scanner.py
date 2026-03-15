@@ -16,23 +16,20 @@ def send_message(text):
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-    try:
-        requests.post(
-            url,
-            data={
-                "chat_id": CHAT_ID,
-                "text": text
-            }
-        )
-    except:
-        print("Telegram mesaj hatası")
+    requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": text
+        }
+    )
 
 
 def get_symbols():
 
     df = pd.read_csv(SHEET_URL)
 
-    symbols = df.iloc[:,0].dropna().tolist()
+    symbols = df.iloc[:, 0].dropna().tolist()
 
     return symbols
 
@@ -60,52 +57,62 @@ def sideways(symbol):
 
 def send_chart(symbol, data):
 
-    try:
+    plt.figure(figsize=(8,4))
+    plt.plot(data["Close"])
+    plt.title(symbol)
 
-        plt.figure(figsize=(8,4))
-        plt.plot(data["Close"])
-        plt.title(symbol)
+    file = f"{symbol}.png"
 
-        file = f"{symbol}.png"
+    plt.savefig(file)
+    plt.close()
 
-        plt.savefig(file)
-        plt.close()
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
 
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    files = {"photo": open(file, "rb")}
 
-        files = {"photo": open(file, "rb")}
-
-        requests.post(
-            url,
-            data={
-                "chat_id": CHAT_ID,
-                "caption": f"📊 Yatay hisse bulundu: {symbol}"
-            },
-            files=files
-        )
-
-    except:
-        print("Grafik gönderme hatası")
+    requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "caption": f"📊 Yatay hisse bulundu: {symbol}"
+        },
+        files=files
+    )
 
 
 def run():
 
     send_message("🚀 Hisse taraması başladı")
 
-    try:
+    symbols = get_symbols()
 
-        symbols = get_symbols()
+    send_message(f"🔎 Toplam {len(symbols)} hisse taranacak")
 
-        send_message(f"🔎 Toplam {len(symbols)} hisse taranacak")
+    found = 0
 
-        found = 0
+    for s in symbols:
 
-        for s in symbols:
+        try:
 
-            try:
+            signal, data = sideways(s)
 
-                signal, data = sideways(s)
+            if signal:
 
-                if signal:
+                found += 1
 
-                    found +=
+                send_chart(s, data)
+
+        except Exception as e:
+
+            print("Hata:", s, e)
+
+    if found == 0:
+
+        send_message("❗ Yatay hisse bulunamadı")
+
+    else:
+
+        send_message(f"✅ Tarama tamamlandı. {found} yatay hisse bulundu")
+
+
+run()
