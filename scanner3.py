@@ -100,51 +100,78 @@ def analyze(symbol):
     w9  = mtf["w_wma9"]
     w15 = mtf["w_wma15"]
     m9  = mtf["m_wma9"]
+    m15 = mtf["m_wma15"]
 
-    # Fiyat tüm WMA'ların üzerinde
-    guclu_yukselis = last > d9 and last > d15 and last > w9 and last > w15
-
-    # Günlük WMA bandında geri test
+    # Gunluk WMA band
     d_alt = min(d9, d15)
     d_ust = max(d9, d15)
-    geri_test_gunluk = (
-        d_alt * 0.97 < last < d_ust * 1.03 and
-        last > w9
-    )
 
-    # Haftalık WMA bandında geri test
+    # Haftalik WMA band
     w_alt = min(w9, w15)
     w_ust = max(w9, w15)
-    geri_test_haftalik = (
-        w_alt * 0.97 < last < w_ust * 1.03 and
-        last > m9
-    )
 
-    # Günlük WMA9 yukarı kırılımı
-    prev_d9 = float(data_4h["d_wma9"].iloc[-2])
-    kirilim = prev < prev_d9 and last > d9
+    # 1) Fiyat gunluk WMA9'a temas (%1.5 tolerans)
+    temas_d9  = abs(last - d9)  / last < 0.015
 
-    signal = guclu_yukselis or geri_test_gunluk or geri_test_haftalik or kirilim
+    # 2) Fiyat gunluk WMA15'e temas (%1.5 tolerans)
+    temas_d15 = abs(last - d15) / last < 0.015
 
-    if kirilim:
-        sinyal_tipi = "🚀 KIRILIM — Günlük WMA9 yukarı kırıldı"
-    elif geri_test_gunluk:
-        sinyal_tipi = "🟢 Günlük WMA desteği test ediliyor"
-    elif geri_test_haftalik:
-        sinyal_tipi = "🟡 Haftalık WMA desteği test ediliyor"
-    elif guclu_yukselis:
-        sinyal_tipi = "✅ Tüm WMA'ların üzerinde"
+    # 3) Fiyat gunluk WMA9 ve WMA15 ARASINDA
+    arasinda_gunluk = d_alt <= last <= d_ust
+
+    # 4) Fiyat haftalik WMA9'a temas (%1.5 tolerans)
+    temas_w9  = abs(last - w9)  / last < 0.015
+
+    # 5) Fiyat haftalik WMA15'e temas (%1.5 tolerans)
+    temas_w15 = abs(last - w15) / last < 0.015
+
+    # 6) Fiyat haftalik WMA9 ve WMA15 ARASINDA
+    arasinda_haftalik = w_alt <= last <= w_ust
+
+    # 7) Gunluk WMA9 yukari kirilim
+    prev_d9    = float(data_4h["d_wma9"].iloc[-2])
+    kirilim_d9 = prev < prev_d9 and last > d9
+
+    # 8) Haftalik WMA9 yukari kirilim
+    prev_w9    = float(data_4h["w_wma9"].iloc[-2])
+    kirilim_w9 = prev < prev_w9 and last > w9
+
+    gunluk_sinyal   = temas_d9 or temas_d15 or arasinda_gunluk
+    haftalik_sinyal = temas_w9 or temas_w15 or arasinda_haftalik
+    kirilim         = kirilim_d9 or kirilim_w9
+
+    signal = gunluk_sinyal or haftalik_sinyal or kirilim
+
+    # Sinyal tipi
+    if kirilim_d9:
+        sinyal_tipi = "KIRILIM - Gunluk WMA9 yukari kirildi"
+    elif kirilim_w9:
+        sinyal_tipi = "KIRILIM - Haftalik WMA9 yukari kirildi"
     else:
-        sinyal_tipi = ""
+        detay = []
+        if arasinda_gunluk:
+            detay.append("Gunluk WMA arasinda")
+        elif temas_d9:
+            detay.append("Gunluk WMA9 temas")
+        elif temas_d15:
+            detay.append("Gunluk WMA15 temas")
+        if arasinda_haftalik:
+            detay.append("Haftalik WMA arasinda")
+        elif temas_w9:
+            detay.append("Haftalik WMA9 temas")
+        elif temas_w15:
+            detay.append("Haftalik WMA15 temas")
+        sinyal_tipi = " | ".join(detay)
 
     stats = {
-        "last":               round(last, 2),
-        "mtf":                mtf,
-        "sinyal_tipi":        sinyal_tipi,
-        "guclu_yukselis":     guclu_yukselis,
-        "geri_test_gunluk":   geri_test_gunluk,
-        "geri_test_haftalik": geri_test_haftalik,
-        "kirilim":            kirilim,
+        "last":            round(last, 2),
+        "mtf":             mtf,
+        "sinyal_tipi":     sinyal_tipi,
+        "kirilim":         kirilim,
+        "kirilim_d9":      kirilim_d9,
+        "kirilim_w9":      kirilim_w9,
+        "gunluk_sinyal":   gunluk_sinyal,
+        "haftalik_sinyal": haftalik_sinyal,
     }
     return signal, data_4h, stats
 
@@ -165,6 +192,7 @@ def send_chart(symbol, data_4h, stats):
     ax2.set_facecolor("#0a0a0f")
     fig.subplots_adjust(hspace=0.05)
 
+    # Mumlar
     for i, row in plot.iterrows():
         o = float(row["Open"].squeeze())
         c = float(row["Close"].squeeze())
@@ -176,13 +204,14 @@ def send_chart(symbol, data_4h, stats):
         ax1.bar(i, height, bottom=bottom, color=color, width=0.6, linewidth=0)
         ax1.plot([i, i], [l, h], color=color, linewidth=0.8)
 
+    # MTF WMA cizgileri
     wma_cols = [
-        ("d_wma9",  "Günlük WMA9",    "#00e676", "-",  2.0),
-        ("d_wma15", "Günlük WMA15",   "#ff5252", "-",  2.0),
-        ("w_wma9",  "Haftalık WMA9",  "#ffd740", "--", 1.6),
-        ("w_wma15", "Haftalık WMA15", "#ff9100", "--", 1.6),
-        ("m_wma9",  "Aylık WMA9",     "#40c4ff", ":",  1.3),
-        ("m_wma15", "Aylık WMA15",    "#ea80fc", ":",  1.3),
+        ("d_wma9",  "Gunluk WMA9",    "#00e676", "-",  2.0),
+        ("d_wma15", "Gunluk WMA15",   "#ff5252", "-",  2.0),
+        ("w_wma9",  "Haftalik WMA9",  "#ffd740", "--", 1.6),
+        ("w_wma15", "Haftalik WMA15", "#ff9100", "--", 1.6),
+        ("m_wma9",  "Aylik WMA9",     "#40c4ff", ":",  1.3),
+        ("m_wma15", "Aylik WMA15",    "#ea80fc", ":",  1.3),
     ]
 
     for col, label, color, style, lw in wma_cols:
@@ -193,23 +222,30 @@ def send_chart(symbol, data_4h, stats):
                      linestyle=style, alpha=0.9,
                      label=f"{label}: {val_last}")
 
-    if stats["kirilim"]:
-        ax1.axvline(x=len(plot)-1, color="#00e676",
-                    linewidth=2, linestyle=":", alpha=0.9)
+    # Sinyal isareti
+    if stats["kirilim_d9"]:
+        renk = "#00e676"
+        etiket = "KIRILIM D-WMA9"
+    elif stats["kirilim_w9"]:
+        renk = "#ffd740"
+        etiket = "KIRILIM W-WMA9"
+    elif stats["gunluk_sinyal"]:
+        renk = "#00e676"
+        etiket = "GUNLUK WMA TEMAS/ARALIK"
+    elif stats["haftalik_sinyal"]:
+        renk = "#ffd740"
+        etiket = "HAFTALIK WMA TEMAS/ARALIK"
+    else:
+        renk = "#ffffff"
+        etiket = ""
+
+    if etiket:
+        ax1.axvline(x=len(plot)-1, color=renk,
+                    linewidth=1.5, linestyle=":", alpha=0.8)
         ax1.annotate(
-            "🚀 KIRILIM",
+            etiket,
             xy=(len(plot)-1, stats["last"]),
-            xytext=(-100, 25),
-            textcoords="offset points",
-            color="#00e676", fontsize=11, fontweight="bold",
-            arrowprops=dict(arrowstyle="->", color="#00e676", lw=1.5)
-        )
-    elif stats["geri_test_gunluk"] or stats["geri_test_haftalik"]:
-        renk = "#ffd740" if stats["geri_test_haftalik"] else "#00e676"
-        ax1.annotate(
-            "⚡ DESTEK TESTİ",
-            xy=(len(plot)-1, stats["last"]),
-            xytext=(-110, 25),
+            xytext=(-130, 25),
             textcoords="offset points",
             color=renk, fontsize=10, fontweight="bold",
             arrowprops=dict(arrowstyle="->", color=renk, lw=1.5)
@@ -217,7 +253,7 @@ def send_chart(symbol, data_4h, stats):
 
     ax1.set_title(
         f"{symbol}  |  MTF WMA  |  {stats['last']}  |  {stats['sinyal_tipi']}",
-        color="white", fontsize=11, pad=10
+        color="white", fontsize=10, pad=10
     )
     ax1.tick_params(colors="#555")
     ax1.yaxis.tick_right()
@@ -228,6 +264,7 @@ def send_chart(symbol, data_4h, stats):
                labelcolor="white", fontsize=7,
                loc="upper left", ncol=2)
 
+    # Hacim
     for i, row in plot.iterrows():
         c   = float(row["Close"].squeeze())
         o   = float(row["Open"].squeeze())
@@ -256,12 +293,12 @@ def send_chart(symbol, data_4h, stats):
 
     m = stats["mtf"]
     caption = (
-        f"<b>{symbol}</b> — MTF WMA Analizi\n"
-        f"💰 Fiyat: {stats['last']}\n\n"
-        f"🟢 Günlük  WMA9: {round(m['d_wma9'],2)} | WMA15: {round(m['d_wma15'],2)}\n"
-        f"🟡 Haftalık WMA9: {round(m['w_wma9'],2)} | WMA15: {round(m['w_wma15'],2)}\n"
-        f"🔵 Aylık   WMA9: {round(m['m_wma9'],2)} | WMA15: {round(m['m_wma15'],2)}\n\n"
-        f"📌 {stats['sinyal_tipi']}"
+        f"<b>{symbol}</b> - MTF WMA Analizi\n"
+        f"Fiyat: {stats['last']}\n\n"
+        f"Gunluk  WMA9: {round(m['d_wma9'],2)} | WMA15: {round(m['d_wma15'],2)}\n"
+        f"Haftalik WMA9: {round(m['w_wma9'],2)} | WMA15: {round(m['w_wma15'],2)}\n"
+        f"Aylik   WMA9: {round(m['m_wma9'],2)} | WMA15: {round(m['m_wma15'],2)}\n\n"
+        f"Sinyal: {stats['sinyal_tipi']}"
     )
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
@@ -274,19 +311,19 @@ def send_chart(symbol, data_4h, stats):
 
     if stats["kirilim"]:
         send_message(
-            f"🚨 <b>MTF WMA KIRILIM</b>\n\n"
+            f"KIRILIM ALARMI\n\n"
             f"<b>{symbol}</b>\n"
-            f"🚀 Günlük WMA9 yukarı kırıldı!\n"
-            f"💰 Fiyat: {stats['last']}"
+            f"{stats['sinyal_tipi']}\n"
+            f"Fiyat: {stats['last']}"
         )
 
-    print(f"[SINYAL]: {symbol} — {stats['sinyal_tipi']}")
+    print(f"[SINYAL]: {symbol} - {stats['sinyal_tipi']}")
 
 
 def run():
-    send_message("🔍 MTF WMA Taramasi basladi")
+    send_message("MTF WMA Taramasi basladi")
     symbols = get_symbols()
-    send_message(f"📋 {len(symbols)} hisse kontrol ediliyor...")
+    send_message(f"{len(symbols)} hisse kontrol ediliyor...")
 
     found = 0
     for s in symbols:
@@ -299,9 +336,9 @@ def run():
             print(f"[HATA] {s}: {e}")
 
     if found == 0:
-        send_message("⚠️ Sinyal bulunamadi")
+        send_message("Sinyal bulunamadi")
     else:
-        send_message(f"✅ Tarama tamamlandi — {found} sinyal!")
+        send_message(f"Tarama tamamlandi - {found} sinyal!")
 
 
 run()
