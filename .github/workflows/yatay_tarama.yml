@@ -19,4 +19,4 @@ jobs:
       - name: Kutuphaneleri kur
         run: pip install yfinance pandas requests mplfinance
       - name: Yataylari bul
-        run: python yatay_avcisi.py
+        run: python Yatay_olursa.py
