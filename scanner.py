@@ -11,24 +11,27 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8550118582:AAHvXNPU7DW-QlOc4_
 CHAT_ID = "-1003838602845"
 THREAD_ID = 1770
 
+SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+
 
 def send_message(text):
+    print(f"[MESAJ]: {text}")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={
+    r = requests.post(url, data={
         "chat_id": CHAT_ID,
         "text": text,
         "parse_mode": "HTML",
         "message_thread_id": THREAD_ID
     })
-
-
-SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+    print(f"[YANIT]: {r.status_code} - {r.text}")
 
 
 def get_symbols():
     df = pd.read_csv(SHEET_URL)
-    return df.iloc[:, 0].dropna().tolist()
+    symbols = df.iloc[:, 0].dropna().tolist()
+    print(f"[SEMBOLLER]: {symbols}")
+    return symbols
 
 
 def analyze(symbol):
@@ -103,7 +106,6 @@ def send_chart(symbol, data, stats):
     ax2.set_facecolor("#0f1117")
     fig.subplots_adjust(hspace=0.05)
 
-    # Mumlar
     for i, row in plot_data.iterrows():
         o = float(row["Open"].squeeze())
         c = float(row["Close"].squeeze())
@@ -115,19 +117,16 @@ def send_chart(symbol, data, stats):
         ax1.bar(i, height, bottom=bottom, color=color, width=0.7, linewidth=0)
         ax1.plot([i, i], [l, h], color=color, linewidth=0.8)
 
-    # MA cizgileri
     ax1.plot(x_pos, ma5_line,  color="#f5c518", linewidth=1.2, label=f"MA5: {stats['ma5']}")
     ax1.plot(x_pos, ma10_line, color="#1e90ff", linewidth=1.2, label=f"MA10: {stats['ma10']}")
     if stats["ma20"]:
         ax1.plot(x_pos, ma20_line, color="#ff69b4", linewidth=1.2, label=f"MA20: {stats['ma20']}")
 
-    # Destek / Direnc
     ax1.axhline(stats["destek"], color="#ff9800", linewidth=1.2,
                 linestyle="--", alpha=0.8, label=f"Destek: {stats['destek']}")
     ax1.axhline(stats["direnc"], color="#42a5f5", linewidth=1.2,
                 linestyle="--", alpha=0.8, label=f"Direnc: {stats['direnc']}")
 
-    # MA temas isareti
     if stats["temas"]:
         temas_str = " & ".join(stats["temas"])
         ax1.annotate(
@@ -140,7 +139,7 @@ def send_chart(symbol, data, stats):
         )
 
     ax1.set_title(
-        f"{symbol}  |  Yatay  |  {stats['last_close']}",
+        f"{symbol}  |  Yatay Konsolidasyon  |  {stats['last_close']}",
         color="white", fontsize=13, pad=10
     )
     ax1.tick_params(colors="#888888")
@@ -151,7 +150,6 @@ def send_chart(symbol, data, stats):
     ax1.legend(facecolor="#1e1e2e", edgecolor="#333",
                labelcolor="white", fontsize=9, loc="upper left")
 
-    # Hacim
     for i, row in plot_data.iterrows():
         c   = float(row["Close"].squeeze())
         o   = float(row["Open"].squeeze())
@@ -166,7 +164,6 @@ def send_chart(symbol, data, stats):
     for spine in ax2.spines.values():
         spine.set_edgecolor("#333333")
 
-    # X ekseni tarihleri
     ax2.set_xticks(x_pos)
     ax2.set_xticklabels(
         [d.strftime("%d/%m") for d in dates],
@@ -181,9 +178,10 @@ def send_chart(symbol, data, stats):
     temas_text = ", ".join(stats["temas"]) if stats["temas"] else "Temas yok"
 
     caption = (
-        f"<b>{symbol}</b>\n"
+        f"<b>{symbol}</b> - Yatay Aday\n"
         f"Fiyat: {stats['last_close']}\n"
         f"Destek: {stats['destek']} | Direnc: {stats['direnc']}\n"
+        f"MA5: {stats['ma5']} | MA10: {stats['ma10']} | MA20: {stats['ma20']}\n"
         f"MA Temas: {temas_text}\n"
         f"Std: %{stats['std']} | ATR: %{stats['atr']}"
     )
@@ -200,7 +198,6 @@ def send_chart(symbol, data, stats):
             },
             files={"photo": f}
         )
-
     print(f"[GRAFIK]: {symbol}")
 
 
@@ -208,7 +205,7 @@ def run():
     print(f"[TOKEN]: {TELEGRAM_TOKEN[:15]}...")
     print(f"[CHAT_ID]: {CHAT_ID}")
 
-    send_message("Gunluk Yatay Hisse taramasi basladi")
+    send_message("Yatay Tarama basladi")
     symbols = get_symbols()
 
     if not symbols:
@@ -220,6 +217,7 @@ def run():
     found = 0
     for s in symbols:
         try:
+            print(f"[ANALIZ]: {s}")
             signal, data, stats = analyze(s)
             if signal:
                 found += 1
@@ -228,9 +226,9 @@ def run():
             print(f"[HATA] {s}: {e}")
 
     if found == 0:
-        send_message("Yatay hisse bulunamadi")
+        send_message("Tarama tamamlandi - yatay hisse bulunamadi")
     else:
-        send_message(f"Yatay Hisse Taramasi tamamlandi - {found} yatay hisse!")
+        send_message(f"Tarama tamamlandi - {found} yatay hisse bulundu!")
 
 
 run()
