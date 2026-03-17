@@ -8,22 +8,15 @@ import matplotlib.pyplot as plt
 import os
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc")
-CHAT_ID = "-1003838602845"
-THREAD_ID = 1821
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "8599240314")
+
+SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "message_thread_id": THREAD_ID
-    })
-
-
-SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+    requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"})
 
 
 def get_symbols():
@@ -37,8 +30,8 @@ def wma(series, period):
 
 
 def analyze(symbol):
-    data = yf.download(symbol, period="1mo", interval="1d", progress=False)
-    if len(data) < 10:
+    data = yf.download(symbol, period="3mo", interval="1d", progress=False)
+    if len(data) < 20:
         return False, data, {}
 
     last = data.tail(5).copy()
@@ -77,9 +70,9 @@ def analyze(symbol):
 
     wma_kesisim = None
     if wma9_prev < wma15_prev and wma9_val > wma15_val:
-        wma_kesisim = "WMA Altin Kesisim - ALIM"
+        wma_kesisim = "🟡 WMA Altin Kesisim (WMA9 WMA15 üstüne cikti) — ALIM SİNYALİ"
     elif wma9_prev > wma15_prev and wma9_val < wma15_val:
-        wma_kesisim = "WMA Olum Kesisimi - SATIM"
+        wma_kesisim = "💀 WMA Olum Kesisimi (WMA9 WMA15 altina düstü) — SATIM SİNYALİ"
 
     last_close = float(full_close.iloc[-1])
 
@@ -129,21 +122,34 @@ def detect_patterns(data):
         return patterns
 
     if body / candle_range < 0.1:
-        patterns.append("Doji")
+        patterns.append("⚪ Doji")
+
     if lower_wick > body * 2 and upper_wick < body * 0.5 and body / candle_range > 0.1:
-        patterns.append("Hammer")
+        patterns.append("🔨 Hammer")
+
     if upper_wick > body * 2 and lower_wick < body * 0.5 and body / candle_range > 0.1:
-        patterns.append("Shooting Star")
+        patterns.append("🌠 Shooting Star")
+
     if lower_wick > candle_range * 0.6 or upper_wick > candle_range * 0.6:
-        patterns.append("Pinbar")
-    if len(o) >= 2 and c[-2] < o[-2] and c[-1] > o[-1] and o[-1] < c[-2] and c[-1] > o[-2]:
-        patterns.append("Bullish Engulfing")
-    if len(o) >= 2 and c[-2] > o[-2] and c[-1] < o[-1] and o[-1] > c[-2] and c[-1] < o[-2]:
-        patterns.append("Bearish Engulfing")
-    if len(o) >= 3 and c[-3] < o[-3] and abs(c[-2] - o[-2]) < (h[-2] - l[-2]) * 0.3 and c[-1] > o[-1] and c[-1] > (o[-3] + c[-3]) / 2:
-        patterns.append("Morning Star")
-    if len(o) >= 3 and c[-3] > o[-3] and abs(c[-2] - o[-2]) < (h[-2] - l[-2]) * 0.3 and c[-1] < o[-1] and c[-1] < (o[-3] + c[-3]) / 2:
-        patterns.append("Evening Star")
+        patterns.append("📌 Pinbar")
+
+    if (len(o) >= 2 and c[-2] < o[-2] and c[-1] > o[-1] and
+            o[-1] < c[-2] and c[-1] > o[-2]):
+        patterns.append("🟢 Bullish Engulfing")
+
+    if (len(o) >= 2 and c[-2] > o[-2] and c[-1] < o[-1] and
+            o[-1] > c[-2] and c[-1] < o[-2]):
+        patterns.append("🔴 Bearish Engulfing")
+
+    if (len(o) >= 3 and c[-3] < o[-3] and
+            abs(c[-2] - o[-2]) < (h[-2] - l[-2]) * 0.3 and
+            c[-1] > o[-1] and c[-1] > (o[-3] + c[-3]) / 2):
+        patterns.append("🌅 Morning Star")
+
+    if (len(o) >= 3 and c[-3] > o[-3] and
+            abs(c[-2] - o[-2]) < (h[-2] - l[-2]) * 0.3 and
+            c[-1] < o[-1] and c[-1] < (o[-3] + c[-3]) / 2):
+        patterns.append("🌆 Evening Star")
 
     return patterns
 
@@ -181,43 +187,57 @@ def send_chart(symbol, data, stats):
         ax1.bar(i, height, bottom=bottom, color=color, width=0.6, linewidth=0)
         ax1.plot([i, i], [l, h], color=color, linewidth=0.9)
 
-    ax1.plot(x_pos, ema8_line,  color="#f5c518", linewidth=1.2, label="EMA8")
-    ax1.plot(x_pos, ema13_line, color="#00e5ff", linewidth=1.2, label="EMA13")
-    ax1.plot(x_pos, ema21_line, color="#ff69b4", linewidth=1.2, label="EMA21")
-    ax1.plot(x_pos, wma9_line,  color="#76ff03", linewidth=1.4, linestyle="--", label="WMA9")
-    ax1.plot(x_pos, wma15_line, color="#ff6d00", linewidth=1.4, linestyle="--", label="WMA15")
-
-    ax1.axhline(stats["destek"], color="#ff9800", linewidth=1.2, linestyle="--", alpha=0.8, label="Destek")
-    ax1.axhline(stats["direnc"], color="#42a5f5", linewidth=1.2, linestyle="--", alpha=0.8, label="Direnc")
+    ax1.plot(x_pos, ema8_line,  color="#f5c518", linewidth=1.2, label=f"EMA8: {stats['ema8']}")
+    ax1.plot(x_pos, ema13_line, color="#00e5ff", linewidth=1.2, label=f"EMA13: {stats['ema13']}")
+    ax1.plot(x_pos, ema21_line, color="#ff69b4", linewidth=1.2, label=f"EMA21: {stats['ema21']}")
+    ax1.plot(x_pos, wma9_line,  color="#76ff03", linewidth=1.4,
+             linestyle="--", label=f"WMA9: {stats['wma9']}")
+    ax1.plot(x_pos, wma15_line, color="#ff6d00", linewidth=1.4,
+             linestyle="--", label=f"WMA15: {stats['wma15']}")
 
     if stats["wma_kesisim"]:
-        ax1.axvline(x=len(plot_data)-1, color="#ffdd57", linewidth=1.5, linestyle=":", alpha=0.7)
+        ax1.axvline(x=len(plot_data) - 1, color="#ffdd57",
+                    linewidth=1.5, linestyle=":", alpha=0.7)
         ax1.annotate(
-            stats["wma_kesisim"],
-            xy=(len(plot_data)-1, stats["last_close"]),
-            xytext=(-110, 30),
+            "⚡ WMA KESİSİM",
+            xy=(len(plot_data) - 1, stats["last_close"]),
+            xytext=(-100, 30),
             textcoords="offset points",
-            color="#ffdd57", fontsize=9, fontweight="bold",
+            color="#ffdd57",
+            fontsize=9,
+            fontweight="bold",
             arrowprops=dict(arrowstyle="->", color="#ffdd57", lw=1.5)
         )
 
+    ax1.axhline(stats["destek"], color="#ff9800", linewidth=1.2,
+                linestyle="--", alpha=0.8, label=f"Destek: {stats['destek']}")
+    ax1.axhline(stats["direnc"], color="#42a5f5", linewidth=1.2,
+                linestyle="--", alpha=0.8, label=f"Direnc: {stats['direnc']}")
+
     if stats["formasyon"]:
+        formasyon_str = " | ".join(stats["formasyon"])
         ax1.annotate(
-            " | ".join(stats["formasyon"]),
-            xy=(len(plot_data)-1, stats["last_close"]),
+            formasyon_str,
+            xy=(len(plot_data) - 1, stats["last_close"]),
             xytext=(-130, -30),
             textcoords="offset points",
-            color="#ffdd57", fontsize=8, fontweight="bold",
+            color="#ffdd57",
+            fontsize=8,
+            fontweight="bold",
             arrowprops=dict(arrowstyle="->", color="#ffdd57", lw=1.0)
         )
 
-    ax1.set_title(f"{symbol}  |  WMA+EMA Yatay  |  {stats['last_close']}", color="white", fontsize=12, pad=10)
+    ax1.set_title(
+        f"{symbol}  |  Yatay + Formasyon + WMA  |  {stats['last_close']}",
+        color="white", fontsize=12, pad=10
+    )
     ax1.tick_params(colors="#888888")
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
     for spine in ax1.spines.values():
         spine.set_edgecolor("#333333")
-    ax1.legend(facecolor="#1a1a2e", edgecolor="#333", labelcolor="white", fontsize=7, loc="upper left")
+    ax1.legend(facecolor="#1a1a2e", edgecolor="#333",
+               labelcolor="white", fontsize=7, loc="upper left")
 
     for i, row in plot_data.iterrows():
         c   = float(row["Close"].squeeze())
@@ -248,41 +268,40 @@ def send_chart(symbol, data, stats):
     temas_text     = ", ".join(stats["temas"]) if stats["temas"] else "EMA temasi yok"
 
     caption = (
-        f"<b>{symbol}</b>\n"
-        f"Fiyat: {stats['last_close']}\n"
-        f"EMA Temas: {temas_text}\n"
-        f"Formasyon: {formasyon_text}\n"
-        f"WMA: {stats['wma_kesisim'] if stats['wma_kesisim'] else 'Kesisim yok'}"
+        f"<b>{symbol}</b> — Yatay + WMA Kesisim\n"
+        f"💰 Fiyat: {stats['last_close']}\n"
+        f"🟢 Destek: {stats['destek']}  |  🔴 Direnc: {stats['direnc']}\n"
+        f"📈 EMA8: {stats['ema8']} | EMA13: {stats['ema13']} | EMA21: {stats['ema21']}\n"
+        f"📊 WMA9: {stats['wma9']} | WMA15: {stats['wma15']}\n"
+        f"⚡ EMA Temas: {temas_text}\n"
+        f"🕯 {formasyon_text}\n"
+        f"📉 Std: %{stats['std']} | ATR: %{stats['atr']}\n\n"
+        f"🚨 <b>{stats['wma_kesisim']}</b>"
     )
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     with open(fname, "rb") as f:
         requests.post(
             url,
-            data={
-                "chat_id": CHAT_ID,
-                "caption": caption,
-                "parse_mode": "HTML",
-                "message_thread_id": THREAD_ID
-            },
+            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
             files={"photo": f}
         )
 
-    if stats["wma_kesisim"]:
-        send_message(
-            f"WMA KESISIM\n"
-            f"<b>{symbol}</b>\n"
-            f"{stats['wma_kesisim']}\n"
-            f"Fiyat: {stats['last_close']}"
-        )
+    send_message(
+        f"🚨 <b>WMA KESİSİM ALARMI</b>\n\n"
+        f"<b>{symbol}</b>\n"
+        f"{stats['wma_kesisim']}\n"
+        f"💰 Fiyat: {stats['last_close']}\n"
+        f"WMA9: {stats['wma9']} | WMA15: {stats['wma15']}"
+    )
 
-    print(f"[SINYAL]: {symbol}")
+    print(f"[GRAFIK]: {symbol}")
 
 
 def run():
-    send_message("WMA+EMA Yatay taramasi basladi")
+    send_message("🔍 Yatay + WMA Kesisim taramasi basladi")
     symbols = get_symbols()
-    send_message(f"{len(symbols)} hisse kontrol ediliyor...")
+    send_message(f"📋 {len(symbols)} hisse kontrol ediliyor...")
 
     found = 0
     for s in symbols:
@@ -295,9 +314,9 @@ def run():
             print(f"[HATA] {s}: {e}")
 
     if found == 0:
-        send_message("Sinyal bulunamadi")
+        send_message("⚠️ Yatay + WMA kesisimi olan hisse bulunamadi")
     else:
-        send_message(f"Tarama tamamlandi - {found} sinyal!")
+        send_message(f"✅ Tarama tamamlandi — {found} hisse bulundu!")
 
 
 run()
