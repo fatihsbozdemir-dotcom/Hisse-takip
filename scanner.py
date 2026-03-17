@@ -69,29 +69,29 @@ def analyze(symbol):
             temas.append(ma_name)
 
     stats = {
-        "fiyat":     round(mean_price, 2),
-        "destek":    round(float(low.min()), 2),
-        "direnc":    round(float(high.max()), 2),
-        "std":       round(std_ratio * 100, 2),
-        "atr":       round(atr_ratio * 100, 2),
-        "ma5":       round(ma5, 2),
-        "ma10":      round(ma10, 2),
-        "ma20":      round(ma20, 2) if ma20 else None,
-        "temas":     temas,
+        "fiyat":      round(mean_price, 2),
+        "destek":     round(float(low.min()), 2),
+        "direnc":     round(float(high.max()), 2),
+        "std":        round(std_ratio * 100, 2),
+        "atr":        round(atr_ratio * 100, 2),
+        "ma5":        round(ma5, 2),
+        "ma10":       round(ma10, 2),
+        "ma20":       round(ma20, 2) if ma20 else None,
+        "temas":      temas,
         "last_close": round(last_close, 2),
     }
     return is_sideways, data, stats
 
 
 def send_chart(symbol, data, stats):
-    last = data.tail(40).copy().reset_index()
-    dates = pd.to_datetime(last["Date"])
-    x_pos = np.arange(len(last))
+    plot_data = data.tail(40).copy().reset_index()
+    dates     = pd.to_datetime(plot_data["Date"])
+    x_pos     = np.arange(len(plot_data))
 
-    full_close = last["Close"].squeeze()
-    ma5_line  = full_close.rolling(5).mean()
-    ma10_line = full_close.rolling(10).mean()
-    ma20_line = full_close.rolling(20).mean()
+    full_close = plot_data["Close"].squeeze()
+    ma5_line   = full_close.rolling(5).mean()
+    ma10_line  = full_close.rolling(10).mean()
+    ma20_line  = full_close.rolling(20).mean()
 
     fig, (ax1, ax2) = plt.subplots(
         2, 1, figsize=(14, 8),
@@ -103,7 +103,8 @@ def send_chart(symbol, data, stats):
     ax2.set_facecolor("#0f1117")
     fig.subplots_adjust(hspace=0.05)
 
-    for i, row in last.iterrows():
+    # Mumlar
+    for i, row in plot_data.iterrows():
         o = float(row["Open"].squeeze())
         c = float(row["Close"].squeeze())
         h = float(row["High"].squeeze())
@@ -114,32 +115,44 @@ def send_chart(symbol, data, stats):
         ax1.bar(i, height, bottom=bottom, color=color, width=0.7, linewidth=0)
         ax1.plot([i, i], [l, h], color=color, linewidth=0.8)
 
-    ax1.plot(x_pos, ma5_line,  color="#f5c518", linewidth=1.2, label="MA5")
-    ax1.plot(x_pos, ma10_line, color="#1e90ff", linewidth=1.2, label="MA10")
-    ax1.plot(x_pos, ma20_line, color="#ff69b4", linewidth=1.2, label="MA20")
+    # MA cizgileri
+    ax1.plot(x_pos, ma5_line,  color="#f5c518", linewidth=1.2, label=f"MA5: {stats['ma5']}")
+    ax1.plot(x_pos, ma10_line, color="#1e90ff", linewidth=1.2, label=f"MA10: {stats['ma10']}")
+    if stats["ma20"]:
+        ax1.plot(x_pos, ma20_line, color="#ff69b4", linewidth=1.2, label=f"MA20: {stats['ma20']}")
 
-    ax1.axhline(stats["destek"], color="#ff9800", linewidth=1.2, linestyle="--", alpha=0.8, label="Destek")
-    ax1.axhline(stats["direnc"], color="#42a5f5", linewidth=1.2, linestyle="--", alpha=0.8, label="Direnc")
+    # Destek / Direnc
+    ax1.axhline(stats["destek"], color="#ff9800", linewidth=1.2,
+                linestyle="--", alpha=0.8, label=f"Destek: {stats['destek']}")
+    ax1.axhline(stats["direnc"], color="#42a5f5", linewidth=1.2,
+                linestyle="--", alpha=0.8, label=f"Direnc: {stats['direnc']}")
 
+    # MA temas isareti
     if stats["temas"]:
+        temas_str = " & ".join(stats["temas"])
         ax1.annotate(
-            " & ".join(stats["temas"]) + " temas",
-            xy=(len(last)-1, stats["last_close"]),
+            f"{temas_str} temasinda",
+            xy=(len(plot_data)-1, stats["last_close"]),
             xytext=(-100, 15),
             textcoords="offset points",
             color="#ffdd57", fontsize=9, fontweight="bold",
             arrowprops=dict(arrowstyle="->", color="#ffdd57", lw=1.2)
         )
 
-    ax1.set_title(f"{symbol}  |  Yatay  |  {stats['last_close']}", color="white", fontsize=13, pad=10)
+    ax1.set_title(
+        f"{symbol}  |  Yatay  |  {stats['last_close']}",
+        color="white", fontsize=13, pad=10
+    )
     ax1.tick_params(colors="#888888")
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
     for spine in ax1.spines.values():
         spine.set_edgecolor("#333333")
-    ax1.legend(facecolor="#1e1e2e", edgecolor="#333", labelcolor="white", fontsize=9, loc="upper left")
+    ax1.legend(facecolor="#1e1e2e", edgecolor="#333",
+               labelcolor="white", fontsize=9, loc="upper left")
 
-    for i, row in last.iterrows():
+    # Hacim
+    for i, row in plot_data.iterrows():
         c   = float(row["Close"].squeeze())
         o   = float(row["Open"].squeeze())
         vol = float(row["Volume"].squeeze())
@@ -153,6 +166,7 @@ def send_chart(symbol, data, stats):
     for spine in ax2.spines.values():
         spine.set_edgecolor("#333333")
 
+    # X ekseni tarihleri
     ax2.set_xticks(x_pos)
     ax2.set_xticklabels(
         [d.strftime("%d/%m") for d in dates],
@@ -191,8 +205,16 @@ def send_chart(symbol, data, stats):
 
 
 def run():
-    send_message("Gunluk Yatay taramasi basladi")
+    print(f"[TOKEN]: {TELEGRAM_TOKEN[:15]}...")
+    print(f"[CHAT_ID]: {CHAT_ID}")
+
+    send_message("Gunluk Yatay Hisse taramasi basladi")
     symbols = get_symbols()
+
+    if not symbols:
+        send_message("HATA: Hisse listesi bos!")
+        return
+
     send_message(f"{len(symbols)} hisse kontrol ediliyor...")
 
     found = 0
@@ -208,7 +230,7 @@ def run():
     if found == 0:
         send_message("Yatay hisse bulunamadi")
     else:
-        send_message(f"Tarama tamamlandi - {found} yatay hisse!")
+        send_message(f"Yatay Hisse Taramasi tamamlandi - {found} yatay hisse!")
 
 
 run()
