@@ -8,15 +8,22 @@ import matplotlib.pyplot as plt
 import os
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "8599240314")
-
-SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+CHAT_ID = "-1003838602845"
+THREAD_ID = 1775
 
 
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"})
+    requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML",
+        "message_thread_id": THREAD_ID
+    })
+
+
+SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 
 def get_symbols():
@@ -92,30 +99,22 @@ def analyze(symbol):
 
     last = float(data_4h["Close"].squeeze().iloc[-1])
 
-    # Haftalik WMA9 (yesil) her zaman WMA15 (sari) den buyuk olmayabilir
-    # Hangisi buyuk hangisi kucuk olursa olsun dogru hesapla
-    w9  = mtf["w_wma9"]   # Yesil - Haftalik WMA9
-    w15 = mtf["w_wma15"]  # Sari  - Haftalik WMA15
+    w9  = mtf["w_wma9"]
+    w15 = mtf["w_wma15"]
 
-    w_ust = max(w9, w15)  # iki haftalik WMA'nin buyugu
-    w_alt = min(w9, w15)  # iki haftalik WMA'nin kucugu
+    w_ust = max(w9, w15)
+    w_alt = min(w9, w15)
 
     # DURUM 1: Fiyat haftalik WMA9 ve WMA15 ARASINDA
-    # Kesinlikle: w_alt <= fiyat <= w_ust
     arasinda = w_alt <= last <= w_ust
 
-    # DURUM 2: Fiyat haftalik WMA9'a temas (ustunden)
-    # Fiyat kesinlikle w_ust'un uzerinde olmali
-    # Ve w_ust'a %1.5'ten yakin olmali
+    # DURUM 2: Fiyat haftalik WMA9'a temas (ustunden %1.5)
     temas_w9 = (
         last > w_ust and
         abs(last - w9) / last < 0.015
     )
 
-    # DURUM 3: Fiyat haftalik WMA15'e temas (ustunden)
-    # Fiyat kesinlikle w15'in uzerinde olmali
-    # Ve w15'e %1.5'ten yakin olmali
-    # Ama w9'un da uzerinde olmali
+    # DURUM 3: Fiyat haftalik WMA15'e temas (ustunden %1.5)
     temas_w15 = (
         last > w_ust and
         abs(last - w15) / last < 0.015
@@ -127,7 +126,7 @@ def analyze(symbol):
         return False, None, {}
 
     if arasinda:
-        sinyal_tipi = "Haftalik WMA9 - WMA15 Arasinda"
+        sinyal_tipi = "WMA9 - WMA15 Arasinda"
     elif temas_w9:
         sinyal_tipi = "Haftalik WMA9 Temas"
     else:
@@ -160,7 +159,6 @@ def send_chart(symbol, data_4h, stats):
     ax2.set_facecolor("#0a0a0f")
     fig.subplots_adjust(hspace=0.05)
 
-    # Mumlar
     for i, row in plot.iterrows():
         o = float(row["Open"].squeeze())
         c = float(row["Close"].squeeze())
@@ -172,7 +170,6 @@ def send_chart(symbol, data_4h, stats):
         ax1.bar(i, height, bottom=bottom, color=color, width=0.6, linewidth=0)
         ax1.plot([i, i], [l, h], color=color, linewidth=0.8)
 
-    # MTF WMA cizgileri
     wma_cols = [
         ("d_wma9",  "Gunluk WMA9",    "#4fc3f7", "-",  1.2),
         ("d_wma15", "Gunluk WMA15",   "#f48fb1", "-",  1.2),
@@ -188,7 +185,6 @@ def send_chart(symbol, data_4h, stats):
             ax1.plot(x, vals, color=color, linewidth=lw,
                      linestyle=style, alpha=0.9, label=label)
 
-    # Sinyal isareti
     if stats["arasinda"]:
         renk   = "#ffd740"
         etiket = "WMA9 - WMA15 ARASINDA"
@@ -199,8 +195,7 @@ def send_chart(symbol, data_4h, stats):
         renk   = "#ffd740"
         etiket = "HAFTALIK WMA15 TEMAS"
 
-    ax1.axvline(x=len(plot)-1, color=renk,
-                linewidth=1.5, linestyle=":", alpha=0.8)
+    ax1.axvline(x=len(plot)-1, color=renk, linewidth=1.5, linestyle=":", alpha=0.8)
     ax1.annotate(
         etiket,
         xy=(len(plot)-1, stats["last"]),
@@ -223,7 +218,6 @@ def send_chart(symbol, data_4h, stats):
                labelcolor="white", fontsize=7,
                loc="upper left", ncol=2)
 
-    # Hacim
     for i, row in plot.iterrows():
         c   = float(row["Close"].squeeze())
         o   = float(row["Open"].squeeze())
@@ -246,7 +240,7 @@ def send_chart(symbol, data_4h, stats):
                         ha="right", color="#555", fontsize=7)
 
     plt.tight_layout()
-    fname = f"{symbol.replace('.','_')}_mtf2.png"
+    fname = f"{symbol.replace('.','_')}_mtf.png"
     plt.savefig(fname, dpi=150, bbox_inches="tight")
     plt.close()
 
@@ -260,7 +254,12 @@ def send_chart(symbol, data_4h, stats):
     with open(fname, "rb") as f:
         requests.post(
             url,
-            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
+            data={
+                "chat_id": CHAT_ID,
+                "caption": caption,
+                "parse_mode": "HTML",
+                "message_thread_id": THREAD_ID
+            },
             files={"photo": f}
         )
 
@@ -268,7 +267,7 @@ def send_chart(symbol, data_4h, stats):
 
 
 def run():
-    send_message("MTF WMA Taramasi basladi")
+    send_message("WMA 9-15 Temas taramasi basladi")
     symbols = get_symbols()
     send_message(f"{len(symbols)} hisse kontrol ediliyor...")
 
