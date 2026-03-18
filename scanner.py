@@ -9,7 +9,8 @@ import matplotlib.dates as mdates
 import os
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "8599240314")
+CHAT_ID = "-1003838602845"
+THREAD_ID = 1770
 
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
@@ -21,7 +22,8 @@ def send_message(text):
     r = requests.post(url, data={
         "chat_id": CHAT_ID,
         "text": text,
-        "parse_mode": "HTML"
+        "parse_mode": "HTML",
+        "message_thread_id": THREAD_ID
     })
     print(f"[YANIT]: {r.status_code} - {r.text}")
 
@@ -208,7 +210,7 @@ def send_chart(symbol, data, stats):
     with open(fname, "rb") as f:
         r = requests.post(
             url,
-            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
+            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML", "message_thread_id": THREAD_ID},
             files={"photo": f}
         )
     print(f"[GRAFIK]: {symbol} - {r.status_code}")
