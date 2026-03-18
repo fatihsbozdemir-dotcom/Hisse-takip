@@ -1,0 +1,24 @@
+name: Gunluk EMA5813 Tarayici
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 16 * * 1-5"
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Python kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Kutuphane kur
+        run: pip install yfinance pandas numpy requests matplotlib
+
+      - name: Tarayici calistir
+        run: python scanner4.py
