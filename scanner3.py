@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import os
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8550118582:AAHvXNPU7DW-QlOc4_XFRTfji-gYXCNchMc")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "8599240314")
+CHAT_ID = "-1003838602845"
+THREAD_ID = 1775
 
 SHEET_ID = "12I44srsajllDeCP6QJ9mvn4p2tO6ElPgw002x2F4yoA"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
@@ -16,7 +17,7 @@ SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=cs
 
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"})
+    requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML", "message_thread_id": THREAD_ID})
 
 
 def get_symbols():
@@ -260,7 +261,7 @@ def send_chart(symbol, data_4h, stats):
     with open(fname, "rb") as f:
         requests.post(
             url,
-            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"},
+            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML", "message_thread_id": THREAD_ID},
             files={"photo": f}
         )
 
