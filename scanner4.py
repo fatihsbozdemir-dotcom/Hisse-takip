@@ -62,13 +62,18 @@ def analyze(symbol):
     # EMA5 > EMA8 > EMA13 tam sirali dizilim
     sirali_dizilim = e5_now > e8_now > e13_now
 
-    # Sadece tam sirali dizilim: EMA5 > EMA8 > EMA13
-    signal = sirali_dizilim
+    # Kesisim: onceki mumda EMA5 altta, simdi EMA5 EMA8 EMA13 hepsinin ustunde
+    ema5_kesti_ema8  = e5_prev < e8_prev  and e5_now > e8_now
+    ema5_kesti_ema13 = e5_prev < e13_prev and e5_now > e13_now
+    ema8_kesti_ema13 = e8_prev < e13_prev and e8_now > e13_now
+
+    # Hepsi ayni anda kesisti mi?
+    signal = ema5_kesti_ema8 and ema5_kesti_ema13 and ema8_kesti_ema13
 
     if not signal:
         return False, data, {}
 
-    sinyal_tipi = "EMA5 > EMA8 > EMA13 SIRALI DIZILIM"
+    sinyal_tipi = "EMA5 EMA8 EMA13 HEPSI AYNI ANDA KESISTI"
 
     stats = {
         "last_close":       round(last_close, 2),
