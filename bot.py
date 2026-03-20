@@ -15,7 +15,7 @@ def analiz_et():
     try:
         simdi = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      json={'chat_id': CHAT_ID, 'text': f'🤖 *{simdi.strftime("%H:%M")}* %2-%10 Arası Yatay Tarama Başladı...'})
+                      json={'chat_id': CHAT_ID, 'text': f'🤖 *{simdi.strftime("%H:%M")}* Hedef Takip Tarama Başladı...'})
 
         df_sheet = pd.read_csv(SHEET_URL)
         df_sheet.columns = [c.strip() for c in df_sheet.columns]
