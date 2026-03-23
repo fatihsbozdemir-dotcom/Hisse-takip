@@ -35,72 +35,82 @@ def get_symbols():
     return symbols
 
 
-def analyze(symbol):
-    data = yf.download(symbol, period="1mo", interval="1d", progress=False)
-    if len(data) < 10:
-        return False, data, {}
-
-    last = data.tail(10).copy()
+def check_sideways(data, gun):
+    if len(data) < gun:
+        return False, 0, 0
+    last = data.tail(gun).copy()
     close = last["Close"].squeeze()
-    high = last["High"].squeeze()
-    low = last["Low"].squeeze()
-
+    high  = last["High"].squeeze()
+    low   = last["Low"].squeeze()
     mean_price = float(close.mean())
-    std_price = float(close.std())
-    std_ratio = std_price / mean_price
-
+    std_ratio  = float(close.std()) / mean_price
     prev_close = close.shift(1)
     tr = pd.concat([
         high - low,
         (high - prev_close).abs(),
-        (low - prev_close).abs()
+        (low  - prev_close).abs()
     ], axis=1).max(axis=1)
-    atr = float(tr.mean())
-    atr_ratio = atr / mean_price
-
+    atr_ratio = float(tr.mean()) / mean_price
     y = close.values.astype(float)
     x = np.arange(len(y))
-    slope = float(np.polyfit(x, y, 1)[0])
-    slope_pct = abs(slope) / mean_price
-
-    is_sideways = (
+    slope_pct = abs(float(np.polyfit(x, y, 1)[0])) / mean_price
+    sideways = (
         std_ratio < 0.05 and
         atr_ratio < 0.05 and
         slope_pct < 0.002
     )
+    return sideways, round(std_ratio * 100, 2), round(atr_ratio * 100, 2)
 
-    # Hareketli ortalamalar (tüm veri üzerinden)
+
+def analyze(symbol):
+    data = yf.download(symbol, period="2mo", interval="1d", progress=False)
+    if len(data) < 10:
+        return False, data, {}
+
+    s10, std10, atr10 = check_sideways(data, 10)
+    s15, std15, atr15 = check_sideways(data, 15)
+    s20, std20, atr20 = check_sideways(data, 20)
+
+    if not (s10 or s15 or s20):
+        return False, data, {}
+
     full_close = data["Close"].squeeze()
+    last_close = float(full_close.iloc[-1])
+    low_all    = float(data["Low"].squeeze().tail(20).min())
+    high_all   = float(data["High"].squeeze().tail(20).max())
+
     ma5  = float(full_close.rolling(5).mean().iloc[-1])
     ma10 = float(full_close.rolling(10).mean().iloc[-1])
     ma20 = float(full_close.rolling(20).mean().iloc[-1]) if len(full_close) >= 20 else None
-    last_close = float(full_close.iloc[-1])
 
-    # Hangi MA'ya temas var? (fiyat MA'nın %1 yakınındaysa)
     temas = []
     for ma_val, ma_name in [(ma5, "MA5"), (ma10, "MA10"), (ma20, "MA20")]:
         if ma_val and abs(last_close - ma_val) / last_close < 0.01:
             temas.append(ma_name)
 
+    yatay_sureler = []
+    if s10: yatay_sureler.append("10 gun")
+    if s15: yatay_sureler.append("15 gun")
+    if s20: yatay_sureler.append("20 gun")
+
     stats = {
-        "fiyat":      round(mean_price, 2),
-        "destek":     round(float(low.min()), 2),
-        "direnc":     round(float(high.max()), 2),
-        "std":        round(std_ratio * 100, 2),
-        "atr":        round(atr_ratio * 100, 2),
-        "ma5":        round(ma5, 2),
-        "ma10":       round(ma10, 2),
-        "ma20":       round(ma20, 2) if ma20 else None,
-        "temas":      temas,
-        "last_close": round(last_close, 2),
+        "last_close":    round(last_close, 2),
+        "destek":        round(low_all, 2),
+        "direnc":        round(high_all, 2),
+        "ma5":           round(ma5, 2),
+        "ma10":          round(ma10, 2),
+        "ma20":          round(ma20, 2) if ma20 else None,
+        "temas":         temas,
+        "yatay_sureler": yatay_sureler,
+        "s10": s10, "std10": std10, "atr10": atr10,
+        "s15": s15, "std15": std15, "atr15": atr15,
+        "s20": s20, "std20": std20, "atr20": atr20,
     }
-    return is_sideways, data, stats
+    return True, data, stats
 
 
 def send_chart(symbol, data, stats):
-    # Tüm veriyi al, tarihleri düzenle
-    plot_data = data.tail(20).copy().reset_index()
-
+    plot_data = data.tail(40).copy().reset_index()
     dates = pd.to_datetime(plot_data["Date"])
     x_pos = np.arange(len(plot_data))
 
@@ -114,7 +124,6 @@ def send_chart(symbol, data, stats):
     ax2.set_facecolor("#0f1117")
     fig.subplots_adjust(hspace=0.05)
 
-    # ── Mumlar ──
     for i, row in plot_data.iterrows():
         o = float(row["Open"].squeeze())
         c = float(row["Close"].squeeze())
@@ -126,7 +135,6 @@ def send_chart(symbol, data, stats):
         ax1.bar(i, height, bottom=bottom, color=color, width=0.6, linewidth=0)
         ax1.plot([i, i], [l, h], color=color, linewidth=0.9)
 
-    # ── Hareketli Ortalamalar ──
     close_series = plot_data["Close"].squeeze()
     ma5_line  = close_series.rolling(5).mean()
     ma10_line = close_series.rolling(10).mean()
@@ -137,37 +145,35 @@ def send_chart(symbol, data, stats):
     if stats["ma20"]:
         ax1.plot(x_pos, ma20_line, color="#ff69b4", linewidth=1.2, label=f"MA20: {stats['ma20']}")
 
-    # ── Destek / Direnç ──
     ax1.axhline(stats["destek"], color="#ff9800", linewidth=1.2,
                 linestyle="--", alpha=0.8, label=f"Destek: {stats['destek']}")
     ax1.axhline(stats["direnc"], color="#42a5f5", linewidth=1.2,
                 linestyle="--", alpha=0.8, label=f"Direnc: {stats['direnc']}")
 
-    # ── Temas etiketi ──
     if stats["temas"]:
         temas_str = " & ".join(stats["temas"])
         ax1.annotate(
-            f"⚡ {temas_str} temasinda!",
+            f"{temas_str} temasinda",
             xy=(len(plot_data) - 1, stats["last_close"]),
             xytext=(-80, 15),
             textcoords="offset points",
-            color="#ffdd57",
-            fontsize=9,
-            fontweight="bold",
+            color="#ffdd57", fontsize=9, fontweight="bold",
             arrowprops=dict(arrowstyle="->", color="#ffdd57", lw=1.2)
         )
 
-    ax1.set_title(f"{symbol}  |  Yatay Konsolidasyon  |  Son fiyat: {stats['last_close']}",
-                  color="white", fontsize=13, pad=10)
+    yatay_str = " | ".join(stats["yatay_sureler"])
+    ax1.set_title(
+        f"{symbol}  |  Yatay: {yatay_str}  |  {stats['last_close']}",
+        color="white", fontsize=13, pad=10
+    )
     ax1.tick_params(colors="#888888")
     ax1.yaxis.tick_right()
     ax1.yaxis.set_label_position("right")
     for spine in ax1.spines.values():
         spine.set_edgecolor("#333333")
-    legend = ax1.legend(facecolor="#1a1a2e", edgecolor="#333",
-                        labelcolor="white", fontsize=8, loc="upper left")
+    ax1.legend(facecolor="#1a1a2e", edgecolor="#333",
+               labelcolor="white", fontsize=8, loc="upper left")
 
-    # ── Hacim ──
     for i, row in plot_data.iterrows():
         c = float(row["Close"].squeeze())
         o = float(row["Open"].squeeze())
@@ -182,7 +188,6 @@ def send_chart(symbol, data, stats):
     for spine in ax2.spines.values():
         spine.set_edgecolor("#333333")
 
-    # ── X ekseni tarihleri ──
     ax2.set_xticks(x_pos)
     ax2.set_xticklabels(
         [d.strftime("%d/%m") for d in dates],
@@ -190,27 +195,35 @@ def send_chart(symbol, data, stats):
     )
 
     plt.tight_layout()
-
     fname = f"{symbol.replace('.', '_')}.png"
     plt.savefig(fname, dpi=150, bbox_inches="tight")
     plt.close()
 
-    # ── Caption ──
     temas_text = f"Temas: {', '.join(stats['temas'])}" if stats["temas"] else "MA temasi yok"
+    yatay_detay = ""
+    if stats["s10"]: yatay_detay += f"10 gun yatay (Std:%{stats['std10']} ATR:%{stats['atr10']})\n"
+    if stats["s15"]: yatay_detay += f"15 gun yatay (Std:%{stats['std15']} ATR:%{stats['atr15']})\n"
+    if stats["s20"]: yatay_detay += f"20 gun yatay (Std:%{stats['std20']} ATR:%{stats['atr20']})\n"
+
     caption = (
         f"<b>{symbol}</b> - Yatay Aday\n"
         f"Fiyat: {stats['last_close']}\n"
         f"Destek: {stats['destek']} | Direnc: {stats['direnc']}\n"
         f"MA5: {stats['ma5']} | MA10: {stats['ma10']} | MA20: {stats['ma20']}\n"
-        f"📌 {temas_text}\n"
-        f"Std: %{stats['std']} | ATR: %{stats['atr']}"
+        f"{temas_text}\n\n"
+        f"{yatay_detay}"
     )
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     with open(fname, "rb") as f:
         r = requests.post(
             url,
-            data={"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML", "message_thread_id": THREAD_ID},
+            data={
+                "chat_id": CHAT_ID,
+                "caption": caption,
+                "parse_mode": "HTML",
+                "message_thread_id": THREAD_ID
+            },
             files={"photo": f}
         )
     print(f"[GRAFIK]: {symbol} - {r.status_code}")
