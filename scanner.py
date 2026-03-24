@@ -206,7 +206,7 @@ def send_chart(symbol, data, stats):
     if stats["s20"]: yatay_detay += f"20 gun yatay (Std:%{stats['std20']} ATR:%{stats['atr20']})\n"
 
     caption = (
-        tv_symbol = symbol.replace(".IS", "")f"<a href='https://tr.tradingview.com/chart/?symbol=BIST:{tv_symbol}'><b>{symbol}</b></a> - Yatay Aday\n"
+        tv_symbol = symbol.replace(".IS", "") f"<a href='https://tr.tradingview.com/chart/?symbol=BIST:{tv_symbol}'><b>{symbol}</b></a> - Yatay Aday\n"
         f"Fiyat: {stats['last_close']}\n"
         f"Destek: {stats['destek']} | Direnc: {stats['direnc']}\n"
         f"MA5: {stats['ma5']} | MA10: {stats['ma10']} | MA20: {stats['ma20']}\n"
