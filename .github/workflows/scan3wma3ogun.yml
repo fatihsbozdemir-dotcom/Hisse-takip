@@ -22,5 +22,5 @@ jobs:
       - name: Kutuphane kur
         run: pip install yfinance pandas numpy requests matplotlib
 
-      - name: Tarayici calistir
+      - name: Tarayici çalıştırmak için sor
         run: python scanner3.py
