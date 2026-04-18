@@ -1,5 +1,4 @@
 import requests
-from bs4 import BeautifulSoup
 import json
 import os
 from datetime import datetime
@@ -23,6 +22,14 @@ KONULAR = [
 ]
 
 SENT_FILE = "kap_sent_ids.json"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "tr-TR,tr;q=0.9",
+    "Referer": "https://www.kap.org.tr/tr/bildirim-sorgu",
+    "X-Requested-With": "XMLHttpRequest",
+}
 
 
 def load_sent_ids():
@@ -49,135 +56,119 @@ def send_message(text):
 
 
 def normalize(text):
-    tr_map = str.maketrans(
-        "çğıöşüÇĞİÖŞÜ",
-        "cgiosuCGIOSU"
-    )
+    tr_map = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
     return text.translate(tr_map).lower().strip()
 
 
 def fetch_kap():
-    url = "https://www.kap.org.tr/tr/bildirim-sorgu"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "tr-TR,tr;q=0.9",
-        "Referer": "https://www.kap.org.tr/tr/",
-    }
+    # KAP'in gercek API endpoint leri
+    endpoints = [
+        "https://www.kap.org.tr/tr/api/disclosuresSummary",
+        "https://www.kap.org.tr/tr/api/home/disclosures",
+        "https://www.kap.org.tr/tr/api/disclosures/summary",
+        "https://www.kap.org.tr/tr/api/bildirimler",
+    ]
 
+    for url in endpoints:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=15)
+            print(f"[DENENIYOR] {url} -> {r.status_code}")
+            if r.status_code == 200:
+                data = r.json()
+                print(f"[BASARILI] {url} -> {type(data)} len:{len(data) if isinstance(data, list) else 'dict'}")
+                print(f"[ORNEK] {str(data)[:300]}")
+                return data, url
+        except Exception as e:
+            print(f"[HATA] {url}: {e}")
+
+    # RSS ile dene
     try:
-        r = requests.get(url, headers=headers, timeout=20)
-        print(f"[KAP] Status: {r.status_code}")
-
-        if r.status_code != 200:
-            print(f"[HATA] HTTP {r.status_code}")
-            return []
-
-        soup = BeautifulSoup(r.text, "html.parser")
-        haberler = []
-
-        # KAP bildirim satirlarini bul
-        rows = soup.find_all("div", class_="w-clearfix w-inline-block notification-item")
-        if not rows:
-            rows = soup.find_all("tr")
-
-        print(f"[KAP] {len(rows)} satir bulundu")
-
-        for row in rows:
-            try:
-                # Sirket adi
-                sirket_el = row.find(class_="notification-company") or row.find("td", class_="company")
-                sirket = sirket_el.get_text(strip=True) if sirket_el else ""
-
-                # Konu
-                konu_el = row.find(class_="notification-subject") or row.find("td", class_="subject")
-                konu = konu_el.get_text(strip=True) if konu_el else ""
-
-                # Tarih
-                tarih_el = row.find(class_="notification-date") or row.find("td", class_="date")
-                tarih = tarih_el.get_text(strip=True) if tarih_el else ""
-
-                # Link
-                link_el = row.find("a", href=True)
-                link = ""
-                if link_el:
-                    href = link_el["href"]
-                    if href.startswith("/"):
-                        link = f"https://www.kap.org.tr{href}"
-                    else:
-                        link = href
-
-                # ID olarak link veya konu+sirket+tarih kombinasyonu kullan
-                haber_id = link or f"{sirket}-{konu}-{tarih}"
-
-                if sirket or konu:
-                    haberler.append({
-                        "id": haber_id,
-                        "sirket": sirket,
-                        "konu": konu,
-                        "tarih": tarih,
-                        "link": link
-                    })
-
-            except Exception as e:
-                print(f"[HATA] Satir parse: {e}")
-                continue
-
-        return haberler
-
+        rss_url = "https://www.kap.org.tr/rss/rss.aspx"
+        r = requests.get(rss_url, headers=HEADERS, timeout=15)
+        print(f"[RSS] {rss_url} -> {r.status_code}")
+        if r.status_code == 200:
+            print(f"[RSS ICERIK] {r.text[:500]}")
     except Exception as e:
-        print(f"[HATA] KAP fetch: {e}")
-        return []
+        print(f"[RSS HATA] {e}")
+
+    return [], None
 
 
 def run():
     print(f"[BASLADI] {datetime.now().strftime('%H:%M:%S')}")
     sent_ids = load_sent_ids()
-    haberler = fetch_kap()
 
-    if not haberler:
-        print("[UYARI] Haber alinamadi")
+    data, url = fetch_kap()
+
+    if not data:
+        print("[UYARI] Haber alinamadi - tum endpointler basarisiz")
         return
 
     konular_norm = [normalize(k) for k in KONULAR]
     yeni = 0
 
-    for haber in haberler:
-        haber_id = haber["id"]
-        konu     = haber["konu"]
-        sirket   = haber["sirket"]
-        tarih    = haber["tarih"]
-        link     = haber["link"]
+    # data liste ise direkt isle
+    haberler = data if isinstance(data, list) else data.get("data", data.get("items", data.get("result", [])))
 
-        if haber_id in sent_ids:
-            continue
+    print(f"[HABERLER] {len(haberler)} adet")
 
-        konu_norm = normalize(konu)
-        eslesti = any(k in konu_norm or konu_norm in k for k in konular_norm)
+    for haber in haberler[:50]:  # son 50 haber
+        try:
+            # Farkli field isimlerini dene
+            haber_id = str(
+                haber.get("disclosureIndex") or
+                haber.get("id") or
+                haber.get("bildiriIndex") or
+                haber.get("index") or ""
+            )
+            konu = (
+                haber.get("subject") or
+                haber.get("disclosureType") or
+                haber.get("konu") or
+                haber.get("baslik") or ""
+            )
+            sirket = (
+                haber.get("title") or
+                haber.get("companyName") or
+                haber.get("sirket") or
+                haber.get("member") or ""
+            )
+            tarih = (
+                haber.get("publishDate") or
+                haber.get("disclosureDate") or
+                haber.get("tarih") or ""
+            )
 
-        if not eslesti:
-            continue
+            if not haber_id:
+                haber_id = f"{sirket}-{konu}-{tarih}"
 
-        if link:
+            if haber_id in sent_ids:
+                continue
+
+            konu_norm = normalize(konu)
+            eslesti = any(k in konu_norm or konu_norm in k for k in konular_norm)
+
+            if not eslesti:
+                continue
+
+            link_id = haber.get("disclosureIndex") or haber.get("id") or ""
+            kap_link = f"https://www.kap.org.tr/tr/Bildirim/{link_id}" if link_id else "https://www.kap.org.tr/tr/bildirim-sorgu"
+
             mesaj = (
                 f"📢 <b>KAP BİLDİRİM</b>\n\n"
                 f"🏢 <b>{sirket}</b>\n"
                 f"📌 {konu}\n"
                 f"🕐 {tarih}\n"
-                f"🔗 <a href='{link}'>Bildirimi Görüntüle</a>"
-            )
-        else:
-            mesaj = (
-                f"📢 <b>KAP BİLDİRİM</b>\n\n"
-                f"🏢 <b>{sirket}</b>\n"
-                f"📌 {konu}\n"
-                f"🕐 {tarih}"
+                f"🔗 <a href='{kap_link}'>Bildirimi Görüntüle</a>"
             )
 
-        send_message(mesaj)
-        sent_ids.add(haber_id)
-        yeni += 1
-        print(f"[GONDERILDI] {sirket} - {konu}")
+            send_message(mesaj)
+            sent_ids.add(haber_id)
+            yeni += 1
+            print(f"[GONDERILDI] {sirket} - {konu}")
+
+        except Exception as e:
+            print(f"[HATA] Haber isleme: {e}")
 
     save_sent_ids(sent_ids)
     print(f"[BITTI] {yeni} yeni haber gonderildi")
