@@ -22,27 +22,25 @@ KONULAR = [
     "spk islem yasagi nedeniyle pay duyurusu",
 ]
 
-STATE_FILE = "kap_state.json"
+SENT_FILE = "kap_sent_ids.json"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
+    "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
     "Accept-Language": "tr-TR,tr;q=0.9",
-    "Referer": "https://www.kap.org.tr/tr/bildirim-sorgu",
 }
 
 
-def load_state():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    # Baslangic ID - bugun civarindaki bir ID
-    return {"last_id": 1500000}
+def load_sent_ids():
+    if os.path.exists(SENT_FILE):
+        with open(SENT_FILE, "r") as f:
+            return set(json.load(f))
+    return set()
 
 
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+def save_sent_ids(ids):
+    with open(SENT_FILE, "w") as f:
+        json.dump(list(ids), f)
 
 
 def send_message(text):
@@ -61,155 +59,113 @@ def normalize(text):
     return text.translate(tr_map).lower().strip()
 
 
-def get_latest_id():
-    """KAP ana sayfasından en son bildirim ID'sini bul"""
+def fetch_haberler():
+    url = "https://uzmanpara.milliyet.com.tr/kap-haberleri/"
     try:
-        url = "https://www.kap.org.tr/tr/api/disclosuresSummary/gunluk"
-        r = requests.get(url, headers=HEADERS, timeout=10)
-        print(f"[LATEST ID API] {r.status_code}")
-        if r.status_code == 200:
-            data = r.json()
-            if isinstance(data, list) and data:
-                ids = [d.get("disclosureIndex", 0) for d in data if d.get("disclosureIndex")]
-                if ids:
-                    return max(ids)
-    except Exception as e:
-        print(f"[LATEST ID HATA] {e}")
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        print(f"[UZMANPARA] Status: {r.status_code}")
 
-    return None
-
-
-def fetch_bildirim(bildirim_id):
-    """Tek bir bildirimi cek ve parse et"""
-    url = f"https://www.kap.org.tr/tr/Bildirim/{bildirim_id}"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=10)
-        if r.status_code == 404:
-            return None
         if r.status_code != 200:
-            return None
+            return []
 
         soup = BeautifulSoup(r.text, "html.parser")
+        haberler = []
 
-        # Baslik
-        baslik = ""
-        baslik_el = soup.find("h1") or soup.find(class_="disclosure-title") or soup.find(class_="title")
-        if baslik_el:
-            baslik = baslik_el.get_text(strip=True)
+        # Tum linkleri tara
+        links = soup.find_all("a", href=True)
+        print(f"[LINKLER] {len(links)} adet link bulundu")
 
-        # Sirket adi
-        sirket = ""
-        sirket_el = soup.find(class_="company-name") or soup.find(class_="member-name")
-        if sirket_el:
-            sirket = sirket_el.get_text(strip=True)
+        for link in links:
+            href = link["href"]
+            if "kap-haberi" not in href:
+                continue
 
-        # Konu/tip
-        konu = ""
-        konu_el = soup.find(class_="disclosure-type") or soup.find(class_="subject")
-        if konu_el:
-            konu = konu_el.get_text(strip=True)
+            baslik = link.get_text(strip=True)
+            if not baslik or len(baslik) < 5:
+                continue
 
-        # Tarih
-        tarih = ""
-        tarih_el = soup.find(class_="publish-date") or soup.find(class_="date")
-        if tarih_el:
-            tarih = tarih_el.get_text(strip=True)
+            # ID al
+            haber_id = href.split("/")[-2] if href.endswith("/") else href.split("/")[-1]
 
-        # Eger baslik yoksa title tag'inden al
-        if not baslik:
-            title_tag = soup.find("title")
-            if title_tag:
-                baslik = title_tag.get_text(strip=True)
+            if href.startswith("http"):
+                full_url = href
+            else:
+                full_url = f"https://uzmanpara.milliyet.com.tr{href}"
 
-        return {
-            "id": bildirim_id,
-            "baslik": baslik,
-            "sirket": sirket,
-            "konu": konu,
-            "tarih": tarih,
-            "link": url
-        }
+            # Parent'tan tarih bul
+            parent = link.parent
+            tarih = ""
+            if parent:
+                tarih_el = parent.find(class_=lambda c: c and "date" in c.lower()) if parent else None
+                if tarih_el:
+                    tarih = tarih_el.get_text(strip=True)
+
+            haberler.append({
+                "id": haber_id,
+                "baslik": baslik,
+                "tarih": tarih,
+                "link": full_url
+            })
+
+        # Tekrarlari temizle
+        seen = set()
+        unique = []
+        for h in haberler:
+            if h["id"] not in seen:
+                seen.add(h["id"])
+                unique.append(h)
+
+        print(f"[HABERLER] {len(unique)} benzersiz haber")
+        if unique:
+            print(f"[ORNEK] {unique[0]}")
+        return unique
 
     except Exception as e:
-        print(f"[BILDIRIM HATA] {bildirim_id}: {e}")
-        return None
-
-
-def find_current_max_id():
-    """Binary search ile gecerli max ID'yi bul"""
-    # Bilinen bir aralik ile baslayalim
-    test_ids = [1500000, 1510000, 1520000, 1530000, 1540000, 1550000]
-    last_valid = 1500000
-
-    for tid in test_ids:
-        url = f"https://www.kap.org.tr/tr/Bildirim/{tid}"
-        try:
-            r = requests.head(url, headers=HEADERS, timeout=5)
-            if r.status_code == 200:
-                last_valid = tid
-            else:
-                break
-        except:
-            break
-
-    return last_valid
+        print(f"[HATA] {e}")
+        return []
 
 
 def run():
     print(f"[BASLADI] {datetime.now().strftime('%H:%M:%S')}")
-    state = load_state()
-    last_id = state.get("last_id", 1500000)
+    sent_ids = load_sent_ids()
+    haberler = fetch_haberler()
 
-    print(f"[SON ID] {last_id}")
+    if not haberler:
+        print("[UYARI] Haber alinamadi")
+        return
 
     konular_norm = [normalize(k) for k in KONULAR]
     yeni = 0
-    kontrol_edilen = 0
-    max_kontrol = 50  # Her calishmada max 50 bildirim kontrol et
 
-    current_id = last_id + 1
-    bos_sayac = 0
+    for haber in haberler:
+        haber_id = haber["id"]
+        baslik   = haber["baslik"]
+        tarih    = haber["tarih"]
+        link     = haber["link"]
 
-    while kontrol_edilen < max_kontrol:
-        bildirim = fetch_bildirim(current_id)
+        if haber_id in sent_ids:
+            continue
 
-        if bildirim is None:
-            bos_sayac += 1
-            if bos_sayac > 10:
-                print(f"[BITTI] 10 bos bildirim, duruyorum. Son ID: {current_id}")
-                break
-        else:
-            bos_sayac = 0
-            last_id = current_id
+        baslik_norm = normalize(baslik)
+        eslesti = any(k in baslik_norm or baslik_norm in k for k in konular_norm)
 
-            # Konu filtresi
-            baslik_norm = normalize(bildirim["baslik"])
-            konu_norm   = normalize(bildirim["konu"])
-            eslesti = any(
-                k in baslik_norm or baslik_norm in k or
-                k in konu_norm   or konu_norm in k
-                for k in konular_norm
-            )
+        if not eslesti:
+            continue
 
-            if eslesti:
-                mesaj = (
-                    f"📢 <b>KAP BİLDİRİM</b>\n\n"
-                    f"🏢 <b>{bildirim['sirket']}</b>\n"
-                    f"📌 {bildirim['baslik']}\n"
-                    f"🕐 {bildirim['tarih']}\n"
-                    f"🔗 <a href='{bildirim['link']}'>Bildirimi Görüntüle</a>"
-                )
-                send_message(mesaj)
-                yeni += 1
-                print(f"[GONDERILDI] {bildirim['sirket']} - {bildirim['baslik'][:50]}")
+        mesaj = (
+            f"📢 <b>KAP BİLDİRİM</b>\n\n"
+            f"📌 {baslik}\n"
+            f"🕐 {tarih}\n"
+            f"🔗 <a href='{link}'>Haberi Görüntüle</a>"
+        )
 
-            kontrol_edilen += 1
+        send_message(mesaj)
+        sent_ids.add(haber_id)
+        yeni += 1
+        print(f"[GONDERILDI] {baslik[:60]}")
 
-        current_id += 1
-
-    state["last_id"] = last_id
-    save_state(state)
-    print(f"[BITTI] {kontrol_edilen} bildirim kontrol edildi, {yeni} gonderildi, son ID: {last_id}")
+    save_sent_ids(sent_ids)
+    print(f"[BITTI] {yeni} yeni haber gonderildi")
 
 
 run()
