@@ -27,8 +27,6 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "tr-TR,tr;q=0.9",
-    "Referer": "https://www.kap.org.tr/tr/bildirim-sorgu",
-    "X-Requested-With": "XMLHttpRequest",
 }
 
 
@@ -60,83 +58,91 @@ def normalize(text):
     return text.translate(tr_map).lower().strip()
 
 
-def fetch_kap():
-    # KAP'in gercek API endpoint leri
+def fetch_haberler():
+    today = datetime.now().strftime("%d-%m-%Y")
+
     endpoints = [
-        "https://www.kap.org.tr/tr/api/disclosuresSummary",
-        "https://www.kap.org.tr/tr/api/home/disclosures",
-        "https://www.kap.org.tr/tr/api/disclosures/summary",
-        "https://www.kap.org.tr/tr/api/bildirimler",
+        # Isyatirim KAP haberleri
+        f"https://www.isyatirim.com.tr/_layouts/15/Isyatirim.Website/Common/Data.aspx/KapHaber?tarih={today}.json",
+        f"https://www.isyatirim.com.tr/_layouts/15/Isyatirim.Website/Common/Data.aspx/SirketHaberleri?tarih={today}.json",
+        "https://www.isyatirim.com.tr/_layouts/15/Isyatirim.Website/Common/Data.aspx/KapHaberler.json",
+        # Bigpara
+        "https://bigpara.hurriyet.com.tr/api/kaphaberler/",
+        "https://bigpara.hurriyet.com.tr/api/v1/kaphaberler/",
+        # Doviz.com
+        "https://www.doviz.com/api/v1/stock/news",
     ]
 
     for url in endpoints:
         try:
-            r = requests.get(url, headers=HEADERS, timeout=15)
-            print(f"[DENENIYOR] {url} -> {r.status_code}")
+            r = requests.get(url, headers=HEADERS, timeout=10)
+            print(f"[TEST] {url[:60]} -> {r.status_code}")
             if r.status_code == 200:
-                data = r.json()
-                print(f"[BASARILI] {url} -> {type(data)} len:{len(data) if isinstance(data, list) else 'dict'}")
-                print(f"[ORNEK] {str(data)[:300]}")
-                return data, url
+                try:
+                    data = r.json()
+                    print(f"[BASARILI] len:{len(data) if isinstance(data, list) else 'dict'}")
+                    print(f"[ORNEK] {str(data)[:200]}")
+                    return data, url
+                except Exception:
+                    print(f"[JSON HATASI] {r.text[:100]}")
         except Exception as e:
-            print(f"[HATA] {url}: {e}")
-
-    # RSS ile dene
-    try:
-        rss_url = "https://www.kap.org.tr/rss/rss.aspx"
-        r = requests.get(rss_url, headers=HEADERS, timeout=15)
-        print(f"[RSS] {rss_url} -> {r.status_code}")
-        if r.status_code == 200:
-            print(f"[RSS ICERIK] {r.text[:500]}")
-    except Exception as e:
-        print(f"[RSS HATA] {e}")
+            print(f"[HATA] {url[:60]}: {str(e)[:50]}")
 
     return [], None
+
+
+def normalize(text):
+    tr_map = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
+    return text.translate(tr_map).lower().strip()
 
 
 def run():
     print(f"[BASLADI] {datetime.now().strftime('%H:%M:%S')}")
     sent_ids = load_sent_ids()
 
-    data, url = fetch_kap()
+    data, url = fetch_haberler()
 
     if not data:
-        print("[UYARI] Haber alinamadi - tum endpointler basarisiz")
+        print("[UYARI] Hic endpoint calismadi")
+        send_message("⚠️ KAP haber kaynagina erisilemedl, kontrol gerekiyor.")
         return
 
     konular_norm = [normalize(k) for k in KONULAR]
-    yeni = 0
+    haberler = data if isinstance(data, list) else []
 
-    # data liste ise direkt isle
-    haberler = data if isinstance(data, list) else data.get("data", data.get("items", data.get("result", [])))
+    # dict ise icindeki listeyi bul
+    if isinstance(data, dict):
+        for key in ["value", "data", "items", "result", "haberler"]:
+            if key in data and isinstance(data[key], list):
+                haberler = data[key]
+                break
 
     print(f"[HABERLER] {len(haberler)} adet")
+    yeni = 0
 
-    for haber in haberler[:50]:  # son 50 haber
+    for haber in haberler[:100]:
         try:
-            # Farkli field isimlerini dene
             haber_id = str(
+                haber.get("id") or haber.get("ID") or
                 haber.get("disclosureIndex") or
-                haber.get("id") or
-                haber.get("bildiriIndex") or
                 haber.get("index") or ""
             )
             konu = (
-                haber.get("subject") or
-                haber.get("disclosureType") or
-                haber.get("konu") or
-                haber.get("baslik") or ""
+                haber.get("subject") or haber.get("SUBJECT") or
+                haber.get("konu") or haber.get("KONU") or
+                haber.get("baslik") or haber.get("BASLIK") or
+                haber.get("title") or haber.get("TITLE") or ""
             )
             sirket = (
-                haber.get("title") or
+                haber.get("title") or haber.get("TITLE") or
                 haber.get("companyName") or
-                haber.get("sirket") or
+                haber.get("sirket") or haber.get("SIRKET") or
                 haber.get("member") or ""
             )
             tarih = (
-                haber.get("publishDate") or
-                haber.get("disclosureDate") or
-                haber.get("tarih") or ""
+                haber.get("publishDate") or haber.get("PUBLISHDATE") or
+                haber.get("tarih") or haber.get("TARIH") or
+                haber.get("date") or ""
             )
 
             if not haber_id:
@@ -151,8 +157,8 @@ def run():
             if not eslesti:
                 continue
 
-            link_id = haber.get("disclosureIndex") or haber.get("id") or ""
-            kap_link = f"https://www.kap.org.tr/tr/Bildirim/{link_id}" if link_id else "https://www.kap.org.tr/tr/bildirim-sorgu"
+            link_id = haber.get("disclosureIndex") or haber.get("id") or haber.get("ID") or ""
+            kap_link = f"https://www.kap.org.tr/tr/Bildirim/{link_id}" if link_id else "https://www.kap.org.tr"
 
             mesaj = (
                 f"📢 <b>KAP BİLDİRİM</b>\n\n"
@@ -168,7 +174,7 @@ def run():
             print(f"[GONDERILDI] {sirket} - {konu}")
 
         except Exception as e:
-            print(f"[HATA] Haber isleme: {e}")
+            print(f"[HATA] {e}")
 
     save_sent_ids(sent_ids)
     print(f"[BITTI] {yeni} yeni haber gonderildi")
