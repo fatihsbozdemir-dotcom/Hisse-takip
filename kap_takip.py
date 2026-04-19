@@ -59,6 +59,20 @@ def normalize(text):
     return text.translate(tr_map).lower().strip()
 
 
+def url_to_baslik(href):
+    """URL'den okunabilir baslik cikar
+    ornek: katilim-finansi-ilkeleri-bilgi-formu -> Katilim Finansi Ilkeleri Bilgi Formu
+    """
+    # Son ID kismini at, baslik kismini al
+    parts = href.strip("/").split("/")
+    # kap-haberi/BASLIK/ID formatinda
+    if len(parts) >= 2:
+        baslik_slug = parts[-2]  # ID'den once gelen kisim
+        baslik = baslik_slug.replace("-", " ").title()
+        return baslik
+    return ""
+
+
 def fetch_haberler():
     url = "https://uzmanpara.milliyet.com.tr/kap-haberleri/"
     try:
@@ -70,55 +84,60 @@ def fetch_haberler():
 
         soup = BeautifulSoup(r.text, "html.parser")
         haberler = []
+        seen_ids = set()
 
-        # Tum linkleri tara
         links = soup.find_all("a", href=True)
-        print(f"[LINKLER] {len(links)} adet link bulundu")
 
         for link in links:
             href = link["href"]
             if "kap-haberi" not in href:
                 continue
 
-            baslik = link.get_text(strip=True)
-            if not baslik or len(baslik) < 5:
+            # ID - URL'nin son parcasi
+            clean = href.strip("/")
+            parts = clean.split("/")
+            haber_id = parts[-1] if parts else ""
+
+            if not haber_id or haber_id in seen_ids:
                 continue
+            seen_ids.add(haber_id)
 
-            # ID al
-            haber_id = href.split("/")[-2] if href.endswith("/") else href.split("/")[-1]
+            # Hisse kodu - link metni
+            hisse = link.get_text(strip=True)
 
+            # Baslik - URL'den
+            baslik = url_to_baslik(href)
+
+            # Tarih - parent elementten
+            tarih = ""
+            parent = link.find_parent()
+            if parent:
+                siblings = parent.find_all(string=True)
+                for s in siblings:
+                    s = s.strip()
+                    if len(s) == 19 and "." in s and ":" in s:
+                        tarih = s
+                        break
+
+            # Tam URL
             if href.startswith("http"):
                 full_url = href
             else:
                 full_url = f"https://uzmanpara.milliyet.com.tr{href}"
 
-            # Parent'tan tarih bul
-            parent = link.parent
-            tarih = ""
-            if parent:
-                tarih_el = parent.find(class_=lambda c: c and "date" in c.lower()) if parent else None
-                if tarih_el:
-                    tarih = tarih_el.get_text(strip=True)
-
             haberler.append({
                 "id": haber_id,
+                "hisse": hisse,
                 "baslik": baslik,
+                "baslik_slug": url_to_baslik(href).lower(),
                 "tarih": tarih,
                 "link": full_url
             })
 
-        # Tekrarlari temizle
-        seen = set()
-        unique = []
-        for h in haberler:
-            if h["id"] not in seen:
-                seen.add(h["id"])
-                unique.append(h)
-
-        print(f"[HABERLER] {len(unique)} benzersiz haber")
-        if unique:
-            print(f"[ORNEK] {unique[0]}")
-        return unique
+        print(f"[HABERLER] {len(haberler)} haber bulundu")
+        if haberler:
+            print(f"[ORNEK] hisse:{haberler[0]['hisse']} baslik:{haberler[0]['baslik']}")
+        return haberler
 
     except Exception as e:
         print(f"[HATA] {e}")
@@ -140,6 +159,7 @@ def run():
     for haber in haberler:
         haber_id = haber["id"]
         baslik   = haber["baslik"]
+        hisse    = haber["hisse"]
         tarih    = haber["tarih"]
         link     = haber["link"]
 
@@ -149,20 +169,20 @@ def run():
         baslik_norm = normalize(baslik)
         eslesti = any(k in baslik_norm or baslik_norm in k for k in konular_norm)
 
-        if not eslesti:
-            continue
+        if eslesti:
+            mesaj = (
+                f"📢 <b>KAP BİLDİRİM</b>\n\n"
+                f"🏷 <b>{hisse}</b>\n"
+                f"📌 {baslik}\n"
+                f"🕐 {tarih}\n"
+                f"🔗 <a href='{link}'>Haberi Görüntüle</a>"
+            )
+            send_message(mesaj)
+            yeni += 1
+            print(f"[GONDERILDI] {hisse} - {baslik}")
 
-        mesaj = (
-            f"📢 <b>KAP BİLDİRİM</b>\n\n"
-            f"📌 {baslik}\n"
-            f"🕐 {tarih}\n"
-            f"🔗 <a href='{link}'>Haberi Görüntüle</a>"
-        )
-
-        send_message(mesaj)
+        # Goruldugu isaretlenmis olsun (eslesmese de)
         sent_ids.add(haber_id)
-        yeni += 1
-        print(f"[GONDERILDI] {baslik[:60]}")
 
     save_sent_ids(sent_ids)
     print(f"[BITTI] {yeni} yeni haber gonderildi")
