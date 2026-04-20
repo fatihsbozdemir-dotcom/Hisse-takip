@@ -20,8 +20,6 @@ KONULAR = [
     "paylarin geri alinmasina iliskin bildirim",
     "pazar gecis basvurusu",
     "spk islem yasagi nedeniyle pay duyurusu",
-    "genel kurul",
-    "ozel durum",
 ]
 
 SENT_FILE = "kap_sent_ids.json"
@@ -65,71 +63,44 @@ def url_to_baslik(href):
     clean = href.strip("/")
     parts = clean.split("/")
     if len(parts) >= 2:
-        baslik_slug = parts[-2]
-        baslik = baslik_slug.replace("-", " ").title()
-        return baslik
+        return parts[-2].replace("-", " ").title()
     return ""
 
 
 def fetch_haberler():
-    # Birden fazla sayfa dene
     tum_haberler = []
     seen_ids = set()
 
-    for sayfa in range(1, 4):  # 3 sayfa
-        if sayfa == 1:
-            url = "https://uzmanpara.milliyet.com.tr/kap-haberleri/"
-        else:
-            url = f"https://uzmanpara.milliyet.com.tr/kap-haberleri/?page={sayfa}"
+    for sayfa in range(1, 4):
+        url = "https://uzmanpara.milliyet.com.tr/kap-haberleri/" if sayfa == 1 else f"https://uzmanpara.milliyet.com.tr/kap-haberleri/?page={sayfa}"
 
         try:
             r = requests.get(url, headers=HEADERS, timeout=15)
-            print(f"[SAYFA {sayfa}] Status: {r.status_code}")
-
             if r.status_code != 200:
                 break
 
             soup = BeautifulSoup(r.text, "html.parser")
-            links = soup.find_all("a", href=True)
             sayfa_haber = 0
 
-            for link in links:
+            for link in soup.find_all("a", href=True):
                 href = link["href"]
                 if "kap-haberi" not in href:
                     continue
 
-                clean = href.strip("/")
-                parts = clean.split("/")
+                parts = href.strip("/").split("/")
                 haber_id = parts[-1] if parts else ""
-
                 if not haber_id or haber_id in seen_ids:
                     continue
                 seen_ids.add(haber_id)
 
                 hisse  = link.get_text(strip=True)
                 baslik = url_to_baslik(href)
-
-                if href.startswith("http"):
-                    full_url = href
-                else:
-                    full_url = f"https://uzmanpara.milliyet.com.tr{href}"
-
-                # Tarih - parent'tan bul
-                tarih = ""
-                row = link.find_parent("tr") or link.find_parent("li") or link.find_parent("div")
-                if row:
-                    text_nodes = row.find_all(string=True)
-                    for t in text_nodes:
-                        t = t.strip()
-                        if len(t) >= 8 and "." in t:
-                            tarih = t
-                            break
+                full_url = href if href.startswith("http") else f"https://uzmanpara.milliyet.com.tr{href}"
 
                 tum_haberler.append({
                     "id": haber_id,
                     "hisse": hisse,
                     "baslik": baslik,
-                    "tarih": tarih,
                     "link": full_url
                 })
                 sayfa_haber += 1
@@ -139,16 +110,17 @@ def fetch_haberler():
                 break
 
         except Exception as e:
-            print(f"[HATA] Sayfa {sayfa}: {e}")
+            print(f"[HATA] {e}")
             break
 
-    print(f"[TOPLAM] {len(tum_haberler)} haber")
+    print(f"[TOPLAM] {len(tum_haberler)} haber bulundu")
     return tum_haberler
 
 
 def run():
     print(f"[BASLADI] {datetime.now().strftime('%H:%M:%S')}")
     sent_ids = load_sent_ids()
+    print(f"[ONCEKI] {len(sent_ids)} haber daha once goruldu")
     haberler = fetch_haberler()
 
     if not haberler:
@@ -162,10 +134,10 @@ def run():
         haber_id = haber["id"]
         baslik   = haber["baslik"]
         hisse    = haber["hisse"]
-        tarih    = haber["tarih"]
         link     = haber["link"]
 
         if haber_id in sent_ids:
+            print(f"[ZATEN GORULDU] {baslik}")
             continue
 
         baslik_norm = normalize(baslik)
@@ -176,17 +148,13 @@ def run():
                 f"📢 <b>KAP BİLDİRİM</b>\n\n"
                 f"🏷 <b>{hisse}</b>\n"
                 f"📌 {baslik}\n"
-                f"🕐 {tarih}\n"
                 f"🔗 <a href='{link}'>Haberi Görüntüle</a>"
             )
             send_message(mesaj)
-            sent_ids.add(haber_id)
             yeni += 1
             print(f"[GONDERILDI] {hisse} - {baslik}")
-        else:
-            # Eslesmeyeni de kaydet - bir daha bakma
-            sent_ids.add(haber_id)
-            print(f"[ATLANDI] {baslik}")
+
+        sent_ids.add(haber_id)
 
     save_sent_ids(sent_ids)
     print(f"[BITTI] {yeni} yeni haber gonderildi")
